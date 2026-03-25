@@ -14,6 +14,28 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Check required secrets
+        run: |
+          MISSING=0
+          for SECRET in EC2_HOST EC2_USER EC2_SSH_KEY VOLCENGINE_API_KEY VOLCENGINE_MODEL_ID NEXT_PUBLIC_SUPABASE_URL NEXT_PUBLIC_SUPABASE_ANON_KEY SUPABASE_SERVICE_ROLE_KEY; do
+            if [ -z "${!SECRET}" ]; then
+              echo "::error::Secret $SECRET is missing!"
+              MISSING=1
+            fi
+          done
+          if [ $MISSING -eq 1 ]; then
+            exit 1
+          fi
+        env:
+          EC2_HOST: ${{ secrets.EC2_HOST }}
+          EC2_USER: ${{ secrets.EC2_USER }}
+          EC2_SSH_KEY: ${{ secrets.EC2_SSH_KEY }}
+          VOLCENGINE_API_KEY: ${{ secrets.VOLCENGINE_API_KEY }}
+          VOLCENGINE_MODEL_ID: ${{ secrets.VOLCENGINE_MODEL_ID }}
+          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+
       - name: Build Docker image
         run: |
           docker build \
@@ -27,16 +49,14 @@ jobs:
           mkdir -p ~/.ssh
           echo "${{ secrets.EC2_SSH_KEY }}" > ~/.ssh/ec2_key
           chmod 600 ~/.ssh/ec2_key
-          ssh-keyscan -H ${{ secrets.EC2_HOST }} >> ~/.ssh/known_hosts 2>/dev/null
+          ssh-keyscan -H ${{ secrets.EC2_HOST }} >> ~/.ssh/known_hosts 2>/dev/null || true
 
-          # 压缩并传输镜像
-          docker save ${{ env.IMAGE_NAME }}:latest | gzip | \
-            ssh -i ~/.ssh/ec2_key ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }} \
-            "cat > ~/image.tar.gz"
+          # 压缩并传输镜像 (合并为单行避免转义问题)
+          docker save ${{ env.IMAGE_NAME }}:latest | gzip | ssh -i ~/.ssh/ec2_key -o StrictHostKeyChecking=no ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }} "cat > ~/image.tar.gz"
 
       - name: Deploy on EC2
         run: |
-          ssh -i ~/.ssh/ec2_key ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }} << 'DEPLOY'
+          ssh -i ~/.ssh/ec2_key -o StrictHostKeyChecking=no ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }} << 'DEPLOY'
             docker load < ~/image.tar.gz
             docker stop future-ai-hr 2>/dev/null || true
             docker rm future-ai-hr 2>/dev/null || true
