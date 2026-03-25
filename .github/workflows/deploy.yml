@@ -63,7 +63,7 @@ jobs:
             docker run -d \
               --name future-ai-hr \
               --restart unless-stopped \
-              -p 3000:3000 \
+              -p 51984:3000 \
               -e VOLCENGINE_API_KEY=${{ secrets.VOLCENGINE_API_KEY }} \
               -e VOLCENGINE_MODEL_ID=${{ secrets.VOLCENGINE_MODEL_ID }} \
               -e NEXT_PUBLIC_SUPABASE_URL=${{ secrets.NEXT_PUBLIC_SUPABASE_URL }} \
