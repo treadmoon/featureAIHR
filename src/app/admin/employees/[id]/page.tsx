@@ -1,0 +1,46 @@
+import { createClient } from '@/lib/supabase-server';
+import { redirect } from 'next/navigation';
+import EmployeeDetailClient from './EmployeeDetailClient';
+
+export default async function EmployeeDetailPage({ params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) redirect('/login');
+
+  const { data: myProfile } = await supabase.from('profiles').select('role').eq('id', user.id).single();
+  const isAdmin = myProfile?.role === 'admin';
+
+  if (!isAdmin && id !== user.id) redirect('/');
+
+  const { data: employee } = await supabase.from('profiles').select('*').eq('id', id).single();
+  if (!employee) redirect('/admin/employees');
+
+  const [transfers, performance, attendance, tickets, expenses, empPositions, departments, positions, jobLevels] = await Promise.all([
+    supabase.from('employee_transfers').select('*').eq('employee_id', id).order('effective_date', { ascending: false }),
+    supabase.from('performance').select('*').eq('employee_id', id).order('created_at', { ascending: false }),
+    supabase.from('attendance').select('*').eq('employee_id', id).order('month', { ascending: false }),
+    supabase.from('tickets').select('*').eq('employee_id', id).order('created_at', { ascending: false }),
+    supabase.from('expenses').select('*').eq('employee_id', id).order('created_at', { ascending: false }),
+    supabase.from('employee_positions').select('*').eq('employee_id', id).order('is_primary', { ascending: false }),
+    supabase.from('departments').select('id, name').eq('is_active', true).order('sort_order'),
+    supabase.from('positions').select('id, name, department_id').eq('is_active', true).order('name'),
+    supabase.from('job_levels').select('id, name, code, track').eq('is_active', true).order('level'),
+  ]);
+
+  return (
+    <EmployeeDetailClient
+      employee={employee}
+      transfers={transfers.data || []}
+      performance={performance.data || []}
+      attendance={attendance.data || []}
+      tickets={tickets.data || []}
+      expenses={expenses.data || []}
+      empPositions={empPositions.data || []}
+      departments={departments.data || []}
+      positions={positions.data || []}
+      jobLevels={jobLevels.data || []}
+      isAdmin={isAdmin}
+    />
+  );
+}
