@@ -386,11 +386,11 @@ ${role === 'admin' ? '你是系统管理员，可以搜索/修改任意员工信
               deptName = depts.map((d: any) => d.name).join('、');
               const deptIds = depts.map((d: any) => d.id);
               const members = await db(sb => sb.from('employee_positions').select('employee_id').in('department_id', deptIds));
-              empIds = [...new Set((members || []).map((m: any) => m.employee_id))];
+              empIds = [...new Set((members || []).map((m: any) => m.employee_id))] as string[];
             }
             if (!empIds.length) {
               const subs = await db(sb => sb.from('profiles').select('id, name, department').eq('report_to', uid).eq('is_active', true));
-              if (subs?.length) { empIds = subs.map((s: any) => s.id); deptName = '直属团队'; }
+              if (subs?.length) { empIds = subs.map((s: any) => s.id) as string[]; deptName = '直属团队'; }
             }
             if (!empIds.length) return { error: '未找到你管辖的团队成员' };
             const att = await db(sb => sb.from('attendance').select('*').in('employee_id', empIds).eq('month', m));
