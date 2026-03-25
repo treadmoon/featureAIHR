@@ -21,30 +21,27 @@ jobs:
             --build-arg NEXT_PUBLIC_SUPABASE_ANON_KEY=${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }} \
             -t ${{ env.IMAGE_NAME }}:latest .
 
-      - name: Save image as tar
-        run: docker save ${{ env.IMAGE_NAME }}:latest | gzip > image.tar.gz
+      - name: Save and transfer image
+        run: |
+          # 写入 SSH 密钥
+          mkdir -p ~/.ssh
+          echo "${{ secrets.EC2_SSH_KEY }}" > ~/.ssh/ec2_key
+          chmod 600 ~/.ssh/ec2_key
+          ssh-keyscan -H ${{ secrets.EC2_HOST }} >> ~/.ssh/known_hosts 2>/dev/null
 
-      - name: Copy image to EC2
-        uses: appleboy/scp-action@v0.1.7
-        with:
-          host: ${{ secrets.EC2_HOST }}
-          username: ${{ secrets.EC2_USER }}
-          key: ${{ secrets.EC2_SSH_KEY }}
-          source: image.tar.gz
-          target: ~/
+          # 压缩并传输镜像
+          docker save ${{ env.IMAGE_NAME }}:latest | gzip | \
+            ssh -i ~/.ssh/ec2_key ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }} \
+            "cat > ~/image.tar.gz"
 
       - name: Deploy on EC2
-        uses: appleboy/ssh-action@v1
-        with:
-          host: ${{ secrets.EC2_HOST }}
-          username: ${{ secrets.EC2_USER }}
-          key: ${{ secrets.EC2_SSH_KEY }}
-          script: |
+        run: |
+          ssh -i ~/.ssh/ec2_key ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }} << 'DEPLOY'
             docker load < ~/image.tar.gz
-            docker stop ${{ env.CONTAINER_NAME }} 2>/dev/null || true
-            docker rm ${{ env.CONTAINER_NAME }} 2>/dev/null || true
+            docker stop future-ai-hr 2>/dev/null || true
+            docker rm future-ai-hr 2>/dev/null || true
             docker run -d \
-              --name ${{ env.CONTAINER_NAME }} \
+              --name future-ai-hr \
               --restart unless-stopped \
               -p 3000:3000 \
               -e VOLCENGINE_API_KEY=${{ secrets.VOLCENGINE_API_KEY }} \
@@ -52,6 +49,7 @@ jobs:
               -e NEXT_PUBLIC_SUPABASE_URL=${{ secrets.NEXT_PUBLIC_SUPABASE_URL }} \
               -e NEXT_PUBLIC_SUPABASE_ANON_KEY=${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }} \
               -e SUPABASE_SERVICE_ROLE_KEY=${{ secrets.SUPABASE_SERVICE_ROLE_KEY }} \
-              ${{ env.IMAGE_NAME }}:latest
+              future-ai-hr:latest
             rm -f ~/image.tar.gz
             docker image prune -f
+          DEPLOY
