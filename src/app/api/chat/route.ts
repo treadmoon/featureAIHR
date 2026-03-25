@@ -378,19 +378,28 @@ ${role === 'admin' ? '你是系统管理员，可以搜索/修改任意员工信
           execute: async ({ month }) => {
             if (role !== 'manager' && role !== 'admin') return { error: '仅经理或管理员可查看团队考勤' };
             const m = month || curMonth;
-            const depts = await db(sb => sb.from('departments').select('id, name').eq('manager_id', uid));
-            if (!depts?.length) return { error: '你当前未管理任何部门' };
-            const deptIds = depts.map((d: any) => d.id);
-            const members = await db(sb => sb.from('employee_positions').select('employee_id').in('department_id', deptIds));
-            if (!members?.length) return { month: m, deptName: depts[0].name, total: 0, message: '部门暂无员工' };
-            const empIds = [...new Set(members.map((m: any) => m.employee_id))];
+            // 先查直接管理的部门，再 fallback 到 report_to 下属
+            let depts = await db(sb => sb.from('departments').select('id, name').eq('manager_id', uid));
+            let empIds: string[] = [];
+            let deptName = '';
+            if (depts?.length) {
+              deptName = depts.map((d: any) => d.name).join('、');
+              const deptIds = depts.map((d: any) => d.id);
+              const members = await db(sb => sb.from('employee_positions').select('employee_id').in('department_id', deptIds));
+              empIds = [...new Set((members || []).map((m: any) => m.employee_id))];
+            }
+            if (!empIds.length) {
+              const subs = await db(sb => sb.from('profiles').select('id, name, department').eq('report_to', uid).eq('is_active', true));
+              if (subs?.length) { empIds = subs.map((s: any) => s.id); deptName = '直属团队'; }
+            }
+            if (!empIds.length) return { error: '未找到你管辖的团队成员' };
             const att = await db(sb => sb.from('attendance').select('*').in('employee_id', empIds).eq('month', m));
             const rows = att || [];
             const totalLate = rows.reduce((s: number, r: any) => s + (r.late_count || 0), 0);
             const totalAbsence = rows.reduce((s: number, r: any) => s + (r.absence_days || 0), 0);
             const totalEarly = rows.reduce((s: number, r: any) => s + (r.early_leave_count || 0), 0);
             const avgActual = rows.length ? (rows.reduce((s: number, r: any) => s + (r.actual_days || 0), 0) / rows.length).toFixed(1) : '0';
-            return { month: m, deptName: depts.map((d: any) => d.name).join('、'), totalMembers: empIds.length, reported: rows.length, late: totalLate, earlyLeave: totalEarly, absence: totalAbsence, avgAttendanceDays: avgActual };
+            return { month: m, deptName, totalMembers: empIds.length, reported: rows.length, late: totalLate, earlyLeave: totalEarly, absence: totalAbsence, avgAttendanceDays: avgActual };
           },
         }),
 
@@ -399,14 +408,24 @@ ${role === 'admin' ? '你是系统管理员，可以搜索/修改任意员工信
           inputSchema: z.object({}),
           execute: async () => {
             if (role !== 'manager' && role !== 'admin') return { error: '仅经理或管理员可查看' };
-            const depts = await db(sb => sb.from('departments').select('id, name').eq('manager_id', uid));
-            if (!depts?.length) return { error: '你当前未管理任何部门' };
-            const deptIds = depts.map((d: any) => d.id);
-            const positions = await db(sb => sb.from('employee_positions').select('employee_id, department_id').in('department_id', deptIds));
-            if (!positions?.length) return { members: [], message: '部门暂无员工' };
-            const empIds = [...new Set(positions.map((p: any) => p.employee_id))];
-            const profiles = await db(sb => sb.from('profiles').select('id, name, job_title, phone, is_active').in('id', empIds));
-            return { deptName: depts.map((d: any) => d.name).join('、'), members: (profiles || []).map((p: any) => ({ name: p.name, jobTitle: p.job_title, phone: p.phone, active: p.is_active })) };
+            let depts = await db(sb => sb.from('departments').select('id, name').eq('manager_id', uid));
+            let members: any[] = [];
+            let deptName = '';
+            if (depts?.length) {
+              deptName = depts.map((d: any) => d.name).join('、');
+              const deptIds = depts.map((d: any) => d.id);
+              const positions = await db(sb => sb.from('employee_positions').select('employee_id').in('department_id', deptIds));
+              if (positions?.length) {
+                const empIds = [...new Set(positions.map((p: any) => p.employee_id))];
+                members = await db(sb => sb.from('profiles').select('id, name, job_title, phone, is_active').in('id', empIds)) || [];
+              }
+            }
+            if (!members.length) {
+              const subs = await db(sb => sb.from('profiles').select('id, name, job_title, phone, is_active, department').eq('report_to', uid).eq('is_active', true));
+              if (subs?.length) { members = subs; deptName = '直属下属'; }
+            }
+            if (!members.length) return { members: [], message: '未找到你管辖的团队成员' };
+            return { deptName, members: members.map((p: any) => ({ name: p.name, jobTitle: p.job_title, phone: p.phone, active: p.is_active })) };
           },
         }),
 

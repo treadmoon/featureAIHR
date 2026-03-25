@@ -66,7 +66,8 @@ export default function HomeContent() {
       let effectiveRole = profile.role; // admin stays admin
       if (profile.role !== 'admin') {
         const { data: managed } = await supabase.from('departments').select('id').eq('manager_id', uid).limit(1);
-        effectiveRole = managed && managed.length > 0 ? 'manager' : 'employee';
+        const { data: subordinates } = await supabase.from('profiles').select('id').eq('report_to', uid).limit(1);
+        effectiveRole = (managed && managed.length > 0) || (subordinates && subordinates.length > 0) ? 'manager' : 'employee';
       }
       setAuthUser({ email: email || '', role: profile.role, effectiveRole });
     }
