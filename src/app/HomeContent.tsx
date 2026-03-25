@@ -96,7 +96,8 @@ export default function HomeContent() {
   const isLoading = status === 'submitted' || status === 'streaming';
   const [pendingItems, setPendingItems] = useState<any[]>([]);
   const pendingCount = pendingItems.length;
-  const [pendingDismissed, setPendingDismissed] = useState(false);
+  const [notifications, setNotifications] = useState<any[]>([]);
+  const [dismissedNotifs, setDismissedNotifs] = useState<Set<string>>(new Set());
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -107,6 +108,7 @@ export default function HomeContent() {
 
   useEffect(() => {
     fetch('/api/approvals?tab=pending').then(r => r.json()).then(d => { if (Array.isArray(d)) setPendingItems(d); }).catch(() => {});
+    fetch('/api/notifications').then(r => r.json()).then(d => { if (Array.isArray(d)) setNotifications(d); }).catch(() => {});
   }, []);
 
   useEffect(() => {
@@ -409,37 +411,51 @@ export default function HomeContent() {
 
       <main className="flex-1 overflow-y-auto p-4 md:p-6 lg:p-10">
         <div className="mx-auto flex max-w-3xl flex-col gap-5 pb-48">
-          {/* 待审批提醒卡片 */}
-          {pendingCount > 0 && !pendingDismissed && (
-            <div className="animate-fade-up bg-gradient-to-r from-amber-50 to-orange-50 border border-amber-200/80 rounded-2xl p-4 shadow-sm">
-              <div className="flex items-start justify-between mb-2">
-                <div className="flex items-center gap-2">
-                  <span className="text-lg">📋</span>
-                  <span className="text-sm font-semibold text-amber-800">
-                    {language === 'zh' ? `你有 ${pendingCount} 条待审批事项` : `You have ${pendingCount} pending approval(s)`}
-                  </span>
-                </div>
-                <button onClick={() => setPendingDismissed(true)} className="text-amber-400 hover:text-amber-600 text-xs">✕</button>
-              </div>
-              <div className="space-y-1.5 mb-3">
-                {pendingItems.slice(0, 3).map((item: any) => {
-                  const typeLabels: Record<string, string> = { leave: '请假', expense: '报销', overtime: '加班', attendance_fix: '补卡', transfer: '调岗', salary_adjust: '调薪', resignation: '离职' };
-                  const icons: Record<string, string> = { leave: '🏖️', expense: '🧾', overtime: '⏰', attendance_fix: '📋', transfer: '🔄', salary_adjust: '💰', resignation: '👋' };
-                  return (
-                    <div key={item.id} className="flex items-center gap-2 text-xs text-amber-700 bg-white/60 rounded-lg px-3 py-1.5">
-                      <span>{icons[item.type] || '📄'}</span>
-                      <span className="font-medium">{item.applicant_name}</span>
-                      <span className="text-amber-500">·</span>
-                      <span>{typeLabels[item.type] || item.type}</span>
+          {/* 通知区 */}
+          {notifications.filter(n => !dismissedNotifs.has(n.type)).length > 0 && (
+            <div className="space-y-2 animate-fade-up">
+              {notifications.filter(n => !dismissedNotifs.has(n.type)).map(n => {
+                const colors: Record<string, string> = {
+                  birthday: 'from-pink-50 to-rose-50 border-pink-200/80',
+                  contract: 'from-red-50 to-orange-50 border-red-200/80',
+                  approval: 'from-amber-50 to-orange-50 border-amber-200/80',
+                  onboarding: 'from-emerald-50 to-teal-50 border-emerald-200/80',
+                  attendance: 'from-sky-50 to-blue-50 border-sky-200/80',
+                };
+                const textColors: Record<string, string> = {
+                  birthday: 'text-pink-800', contract: 'text-red-800', approval: 'text-amber-800',
+                  onboarding: 'text-emerald-800', attendance: 'text-sky-800',
+                };
+                return (
+                  <div key={n.type} className={`bg-gradient-to-r ${colors[n.type] || colors.approval} border rounded-2xl p-3.5 shadow-sm`}>
+                    <div className="flex items-start justify-between">
+                      <div className="flex items-start gap-2 flex-1 min-w-0">
+                        <span className="text-lg shrink-0">{n.icon}</span>
+                        <div className="min-w-0">
+                          <p className={`text-sm font-semibold ${textColors[n.type] || 'text-gray-800'}`}>{n.title}</p>
+                          <p className="text-xs text-gray-500 mt-0.5">{n.desc}</p>
+                        </div>
+                      </div>
+                      <button onClick={() => setDismissedNotifs(prev => new Set(prev).add(n.type))} className="text-gray-300 hover:text-gray-500 text-xs ml-2 shrink-0">✕</button>
                     </div>
-                  );
-                })}
-                {pendingCount > 3 && <p className="text-xs text-amber-500 pl-1">...{language === 'zh' ? `还有 ${pendingCount - 3} 条` : `and ${pendingCount - 3} more`}</p>}
-              </div>
-              <button onClick={() => router.push('/approvals')}
-                className="w-full py-2 text-xs font-medium text-amber-700 bg-white/80 hover:bg-white rounded-lg border border-amber-200 transition-colors">
-                {language === 'zh' ? '前往审批工作台 →' : 'Go to Approvals →'}
-              </button>
+                    {n.action && n.action.startsWith('/') && (
+                      <button onClick={() => router.push(n.action)} className="mt-2 w-full py-1.5 text-xs font-medium text-gray-600 bg-white/80 hover:bg-white rounded-lg border border-gray-200 transition-colors">
+                        前往处理 →
+                      </button>
+                    )}
+                    {n.action === 'onboarding' && (
+                      <div className="mt-2 grid grid-cols-2 gap-1.5">
+                        {['完善个人信息', '阅读员工手册', '设置 VPN/邮箱', '认识你的团队'].map((item, i) => (
+                          <button key={i} onClick={() => quickSend(item)}
+                            className="text-xs py-1.5 px-2 bg-white/80 hover:bg-white rounded-lg border border-emerald-200 text-emerald-700 transition-colors">
+                            {['📝','📖','🔑','👥'][i]} {item}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
             </div>
           )}
 
