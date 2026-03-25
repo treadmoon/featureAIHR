@@ -396,6 +396,13 @@ export default function ToolCards({ message, confirmedDrafts, setConfirmedDrafts
     if (toolName === 'searchCompanyPolicies') {
       if (!hasResult) return <div key={`tool-${index}`} className="text-sm text-gray-500 italic p-3">📚 正在检索公司政策文档...</div>;
       if (result.error) return <div key={`tool-${index}`} className="text-sm text-red-500 p-3">{result.error}</div>;
+      if (result.documents?.length > 0) return (
+        <div key={`tool-${index}`} className="my-2 flex flex-wrap gap-1.5">
+          {result.documents.map((doc: any, i: number) => (
+            <span key={i} className="text-[11px] bg-slate-100 text-slate-500 px-2 py-0.5 rounded-md border border-slate-200">📖 {doc.title}</span>
+          ))}
+        </div>
+      );
       return null;
     }
 
