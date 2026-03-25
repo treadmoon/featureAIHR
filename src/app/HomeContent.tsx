@@ -99,6 +99,11 @@ export default function HomeContent() {
   const [pendingDismissed, setPendingDismissed] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [sessions, setSessions] = useState<any[]>([]);
+  const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
+  const [historyMgmt, setHistoryMgmt] = useState(false);
+  const savedMsgCount = useRef(0);
 
   useEffect(() => {
     fetch('/api/approvals?tab=pending').then(r => r.json()).then(d => { if (Array.isArray(d)) setPendingItems(d); }).catch(() => {});
@@ -109,6 +114,60 @@ export default function HomeContent() {
     if (menuOpen) document.addEventListener('mousedown', handleClick);
     return () => document.removeEventListener('mousedown', handleClick);
   }, [menuOpen]);
+
+  // 加载历史会话列表
+  const loadSessions = () => { fetch('/api/chat-history').then(r => r.json()).then(d => { if (Array.isArray(d)) setSessions(d); }).catch(() => {}); };
+  useEffect(() => { loadSessions(); }, []);
+
+  // 自动保存：当消息增加且非 streaming 时保存
+  useEffect(() => {
+    if (status === 'streaming' || status === 'submitted' || messages.length === 0) return;
+    if (messages.length <= savedMsgCount.current) return;
+    const newMsgs = messages.slice(savedMsgCount.current);
+    savedMsgCount.current = messages.length;
+    (async () => {
+      let sid = currentSessionId;
+      if (!sid) {
+        const res = await fetch('/api/chat-history', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'create' }) });
+        const data = await res.json();
+        sid = data?.id;
+        if (sid) setCurrentSessionId(sid);
+      }
+      if (sid) {
+        await fetch('/api/chat-history', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'save', sessionId: sid, messages: newMsgs, totalCount: messages.length }) });
+        loadSessions();
+      }
+    })();
+  }, [messages, status]);
+
+  // 加载历史会话
+  const loadSession = async (sid: string) => {
+    const res = await fetch('/api/chat-history', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'load', sessionId: sid }) });
+    const msgs = await res.json();
+    if (Array.isArray(msgs)) {
+      setMessages(msgs.map((m: any, i: number) => ({ id: `hist-${i}`, role: m.role, parts: m.parts || [{ type: 'text', text: m.content }] })));
+      setCurrentSessionId(sid);
+      savedMsgCount.current = msgs.length;
+      setSidebarOpen(false);
+    }
+  };
+
+  // 新对话
+  const handleNewChat = () => { setMessages([]); setCurrentSessionId(null); savedMsgCount.current = 0; setConfirmedDrafts(new Set()); setFeedbackSent(new Set()); setSidebarOpen(false); };
+
+  // 删除会话
+  const deleteSession = async (sid: string) => {
+    await fetch('/api/chat-history', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'delete', sessionId: sid }) });
+    if (currentSessionId === sid) handleNewChat();
+    loadSessions();
+  };
+
+  // 按日期删除/压缩
+  const historyAction = async (action: 'deleteByDate' | 'compress', before: string) => {
+    await fetch('/api/chat-history', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action, before }) });
+    loadSessions();
+    setHistoryMgmt(false);
+  };
 
   const autoResize = () => {
     const el = textareaRef.current;
@@ -128,7 +187,7 @@ export default function HomeContent() {
     }
   }, [status, error]);
 
-  const handleClear = () => { setMessages([]); setConfirmedDrafts(new Set()); setFeedbackSent(new Set()); };
+  const handleClear = () => { handleNewChat(); };
 
   const sendFeedback = async (msgId: string, rating: string, reason?: string) => {
     const msg = messages.find(m => m.id === msgId);
@@ -285,6 +344,9 @@ export default function HomeContent() {
     <div className="flex h-screen w-full flex-col bg-gradient-to-b from-slate-50 to-gray-100/80 text-gray-900 font-sans">
       <header className="flex h-16 shrink-0 items-center justify-between border-b border-white/60 bg-white/70 backdrop-blur-xl px-4 md:px-6 sticky top-0 z-30 shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
         <div className="flex items-center gap-3">
+          <button onClick={() => setSidebarOpen(v => !v)} className="p-2 rounded-xl text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-all">
+            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" /></svg>
+          </button>
           <div className="relative flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-indigo-500 via-purple-500 to-pink-500 text-white shadow-lg shadow-indigo-200/50">
             <Bot size={22} />
             <span className="absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-full bg-emerald-400 border-2 border-white" />
@@ -455,6 +517,65 @@ export default function HomeContent() {
           <div ref={messagesEndRef} />
         </div>
       </main>
+
+      {/* 侧边栏 */}
+      {sidebarOpen && (
+        <div className="fixed inset-0 z-40 flex">
+          <div className="fixed inset-0 bg-black/30" onClick={() => setSidebarOpen(false)} />
+          <div className="relative w-72 max-w-[80vw] bg-white shadow-xl flex flex-col h-full animate-slide-in">
+            <div className="p-4 border-b flex items-center justify-between">
+              <span className="font-semibold text-gray-800 text-sm">对话历史</span>
+              <div className="flex gap-1">
+                <button onClick={() => setHistoryMgmt(true)} className="text-xs text-gray-400 hover:text-gray-600 px-2 py-1 rounded hover:bg-gray-100">管理</button>
+                <button onClick={handleNewChat} className="text-xs text-indigo-600 hover:text-indigo-700 px-2 py-1 rounded hover:bg-indigo-50 font-medium">+ 新对话</button>
+              </div>
+            </div>
+            <div className="flex-1 overflow-y-auto">
+              {sessions.length === 0 ? (
+                <p className="text-center text-gray-400 text-sm py-10">暂无历史对话</p>
+              ) : (
+                <div className="divide-y divide-gray-50">
+                  {sessions.map(s => (
+                    <div key={s.id} className={`px-4 py-3 flex items-center justify-between hover:bg-gray-50 cursor-pointer group ${currentSessionId === s.id ? 'bg-indigo-50' : ''}`}>
+                      <div className="min-w-0 flex-1" onClick={() => loadSession(s.id)}>
+                        <p className="text-sm text-gray-800 truncate font-medium">{s.title}</p>
+                        <p className="text-[10px] text-gray-400">{new Date(s.updated_at).toLocaleDateString('zh-CN')} · {s.message_count} 条</p>
+                      </div>
+                      <button onClick={(e) => { e.stopPropagation(); deleteSession(s.id); }}
+                        className="text-gray-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity p-1">
+                        <Trash2 size={14} />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 历史管理弹窗 */}
+      {historyMgmt && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={() => setHistoryMgmt(false)}>
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm p-5" onClick={e => e.stopPropagation()}>
+            <h3 className="font-semibold text-gray-800 mb-4">管理对话历史</h3>
+            <div className="space-y-2">
+              {[
+                { label: '删除 7 天前的对话', action: () => historyAction('deleteByDate', new Date(Date.now() - 7 * 86400000).toISOString()), color: 'red' },
+                { label: '删除 30 天前的对话', action: () => historyAction('deleteByDate', new Date(Date.now() - 30 * 86400000).toISOString()), color: 'red' },
+                { label: '压缩 7 天前的对话（保留首尾）', action: () => historyAction('compress', new Date(Date.now() - 7 * 86400000).toISOString()), color: 'amber' },
+                { label: '压缩 30 天前的对话（保留首尾）', action: () => historyAction('compress', new Date(Date.now() - 30 * 86400000).toISOString()), color: 'amber' },
+              ].map((item, i) => (
+                <button key={i} onClick={item.action}
+                  className={`w-full text-left px-4 py-2.5 text-sm rounded-xl border transition-colors ${item.color === 'red' ? 'border-red-100 text-red-600 hover:bg-red-50' : 'border-amber-100 text-amber-600 hover:bg-amber-50'}`}>
+                  {item.color === 'red' ? '🗑️' : '📦'} {item.label}
+                </button>
+              ))}
+            </div>
+            <button onClick={() => setHistoryMgmt(false)} className="mt-3 text-xs text-gray-400 hover:text-gray-600">取消</button>
+          </div>
+        </div>
+      )}
 
       {feedbackModal && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={() => setFeedbackModal(null)}>
