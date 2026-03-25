@@ -106,6 +106,8 @@ draftWorkflowApplication 内部会自动查询余额并按"调休>年假>事假"
 
 【安全与权限约束】
 当前与你对话的用户角色是: ${role || 'employee'}。
+${role === 'manager' ? '你是部门经理，可以查看团队考勤、团队花名册。遇到团队管理类问题直接调用对应工具。' : ''}
+${role === 'admin' ? '你是系统管理员，可以搜索/修改任意员工信息、查看全公司统计数据。用户说"查员工XX"时调用 searchEmployee，说"改XX的部门"时调用 updateEmployee。' : ''}
 如果用户提问明显超出了其角色的权限（例如普通员工查询他人薪水，或修改考勤记录），请委婉但坚决地拒绝，并提示其越权。
 
 【核心原则】
@@ -365,6 +367,90 @@ draftWorkflowApplication 内部会自动查询余额并按"调休>年假>事假"
             } catch (e: any) {
               return { error: '向量检索失败: ' + e.message };
             }
+          },
+        }),
+
+        // ── 经理专属工具 ──
+        getTeamAttendance: tool({
+          description: '查询当前经理所管辖部门的团队考勤汇总（仅 manager/admin 可用）',
+          inputSchema: z.object({ month: z.string().optional() }),
+          execute: async ({ month }) => {
+            if (role !== 'manager' && role !== 'admin') return { error: '仅经理或管理员可查看团队考勤' };
+            const m = month || curMonth;
+            const depts = await db(sb => sb.from('departments').select('id, name').eq('manager_id', uid));
+            if (!depts?.length) return { error: '你当前未管理任何部门' };
+            const deptIds = depts.map((d: any) => d.id);
+            const members = await db(sb => sb.from('employee_positions').select('employee_id').in('department_id', deptIds));
+            if (!members?.length) return { month: m, deptName: depts[0].name, total: 0, message: '部门暂无员工' };
+            const empIds = [...new Set(members.map((m: any) => m.employee_id))];
+            const att = await db(sb => sb.from('attendance').select('*').in('employee_id', empIds).eq('month', m));
+            const rows = att || [];
+            const totalLate = rows.reduce((s: number, r: any) => s + (r.late_count || 0), 0);
+            const totalAbsence = rows.reduce((s: number, r: any) => s + (r.absence_days || 0), 0);
+            const totalEarly = rows.reduce((s: number, r: any) => s + (r.early_leave_count || 0), 0);
+            const avgActual = rows.length ? (rows.reduce((s: number, r: any) => s + (r.actual_days || 0), 0) / rows.length).toFixed(1) : '0';
+            return { month: m, deptName: depts.map((d: any) => d.name).join('、'), totalMembers: empIds.length, reported: rows.length, late: totalLate, earlyLeave: totalEarly, absence: totalAbsence, avgAttendanceDays: avgActual };
+          },
+        }),
+
+        getTeamMembers: tool({
+          description: '查看当前经理管辖部门的团队花名册（仅 manager/admin 可用）',
+          inputSchema: z.object({}),
+          execute: async () => {
+            if (role !== 'manager' && role !== 'admin') return { error: '仅经理或管理员可查看' };
+            const depts = await db(sb => sb.from('departments').select('id, name').eq('manager_id', uid));
+            if (!depts?.length) return { error: '你当前未管理任何部门' };
+            const deptIds = depts.map((d: any) => d.id);
+            const positions = await db(sb => sb.from('employee_positions').select('employee_id, department_id').in('department_id', deptIds));
+            if (!positions?.length) return { members: [], message: '部门暂无员工' };
+            const empIds = [...new Set(positions.map((p: any) => p.employee_id))];
+            const profiles = await db(sb => sb.from('profiles').select('id, name, job_title, phone, is_active').in('id', empIds));
+            return { deptName: depts.map((d: any) => d.name).join('、'), members: (profiles || []).map((p: any) => ({ name: p.name, jobTitle: p.job_title, phone: p.phone, active: p.is_active })) };
+          },
+        }),
+
+        // ── 管理员专属工具 ──
+        searchEmployee: tool({
+          description: '按姓名、部门或职位模糊搜索员工信息（仅 admin 可用）',
+          inputSchema: z.object({ keyword: z.string() }),
+          execute: async ({ keyword }) => {
+            if (role !== 'admin') return { error: '仅管理员可搜索员工信息' };
+            const results = await db(sb => sb.from('profiles').select('id, name, department, job_title, phone, is_active, hire_date').or(`name.ilike.%${keyword}%,department.ilike.%${keyword}%,job_title.ilike.%${keyword}%`).limit(10));
+            if (!results?.length) return { results: [], message: `未找到匹配"${keyword}"的员工` };
+            return { results: results.map((p: any) => ({ name: p.name, department: p.department, jobTitle: p.job_title, phone: p.phone, active: p.is_active, hireDate: p.hire_date })) };
+          },
+        }),
+
+        updateEmployee: tool({
+          description: '修改员工的部门、职位、职级或状态（仅 admin 可用）。修改前必须先用 searchEmployee 确认员工存在。',
+          inputSchema: z.object({ employeeName: z.string(), field: z.enum(['department', 'job_title', 'job_level', 'is_active', 'phone']), newValue: z.string() }),
+          execute: async ({ employeeName, field, newValue }) => {
+            if (role !== 'admin') return { error: '仅管理员可修改员工信息' };
+            const emp = await db(sb => sb.from('profiles').select('id, name').ilike('name', `%${employeeName}%`).limit(1).single());
+            if (!emp) return { error: `未找到员工"${employeeName}"` };
+            const updateData: Record<string, unknown> = {};
+            if (field === 'is_active') updateData[field] = newValue === 'true' || newValue === '启用';
+            else updateData[field] = newValue;
+            const { error: updateErr } = await (supabaseAdmin!).from('profiles').update(updateData).eq('id', emp.id);
+            if (updateErr) return { error: `修改失败: ${updateErr.message}` };
+            return { success: true, name: emp.name, field, newValue, message: `已将${emp.name}的${field}修改为"${newValue}"` };
+          },
+        }),
+
+        getCompanyStats: tool({
+          description: '查询全公司统计数据：在职人数、部门分布、考勤异常率等（仅 admin 可用）',
+          inputSchema: z.object({ month: z.string().optional() }),
+          execute: async ({ month }) => {
+            if (role !== 'admin') return { error: '仅管理员可查看全公司统计' };
+            const m = month || curMonth;
+            const allProfiles = await db(sb => sb.from('profiles').select('id, department, is_active'));
+            const active = (allProfiles || []).filter((p: any) => p.is_active);
+            const deptDist: Record<string, number> = {};
+            active.forEach((p: any) => { const d = p.department || '未分配'; deptDist[d] = (deptDist[d] || 0) + 1; });
+            const att = await db(sb => sb.from('attendance').select('late_count, absence_days, early_leave_count').eq('month', m));
+            const rows = att || [];
+            const totalAnomalies = rows.reduce((s: number, r: any) => s + (r.late_count || 0) + (r.absence_days || 0) + (r.early_leave_count || 0), 0);
+            return { month: m, totalActive: active.length, totalInactive: (allProfiles || []).length - active.length, departmentDistribution: deptDist, attendanceReported: rows.length, totalAnomalies, anomalyRate: rows.length ? (totalAnomalies / rows.length).toFixed(1) + '次/人' : 'N/A' };
           },
         }),
       },

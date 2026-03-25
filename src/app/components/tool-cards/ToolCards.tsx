@@ -310,6 +310,89 @@ export default function ToolCards({ message, confirmedDrafts, setConfirmedDrafts
       );
     }
 
+    if (toolName === 'getTeamAttendance') {
+      if (!hasResult) return <div key={`tool-${index}`} className="text-sm text-gray-500 italic p-3">📊 正在查询团队考勤...</div>;
+      if (result.error) return <div key={`tool-${index}`} className="text-sm text-red-500 p-3">{result.error}</div>;
+      const r = result;
+      return (
+        <div key={`tool-${index}`} className="my-4 w-72 md:w-[360px] rounded-2xl border border-violet-200 bg-violet-50/40 p-5 shadow-sm">
+          <h3 className="text-sm font-bold text-violet-900 mb-3 flex items-center justify-between"><span>📊 {r.deptName} · {r.month} 考勤</span><span className="text-xs font-normal bg-white border px-2 py-0.5 rounded-full">{r.totalMembers}人</span></h3>
+          <div className="grid grid-cols-3 gap-2 mb-2">
+            <div className="bg-red-50 border border-red-100 rounded-xl p-2 text-center"><div className="text-lg font-bold text-red-600">{r.late}</div><div className="text-[10px] text-red-500">迟到</div></div>
+            <div className="bg-orange-50 border border-orange-100 rounded-xl p-2 text-center"><div className="text-lg font-bold text-orange-600">{r.earlyLeave}</div><div className="text-[10px] text-orange-500">早退</div></div>
+            <div className="bg-gray-50 border border-gray-200 rounded-xl p-2 text-center"><div className="text-lg font-bold text-gray-700">{r.absence}</div><div className="text-[10px] text-gray-500">缺勤</div></div>
+          </div>
+          <div className="text-xs text-gray-500">已提交考勤 {r.reported}/{r.totalMembers} 人 · 平均出勤 {r.avgAttendanceDays} 天</div>
+        </div>
+      );
+    }
+
+    if (toolName === 'getTeamMembers') {
+      if (!hasResult) return <div key={`tool-${index}`} className="text-sm text-gray-500 italic p-3">👥 正在查询团队成员...</div>;
+      if (result.error) return <div key={`tool-${index}`} className="text-sm text-red-500 p-3">{result.error}</div>;
+      return (
+        <div key={`tool-${index}`} className="my-4 w-72 md:w-[360px] rounded-2xl border border-purple-200 bg-white shadow-sm overflow-hidden">
+          <div className="bg-purple-50 px-4 py-3 border-b border-purple-100 flex items-center justify-between"><span className="font-bold text-sm text-purple-800">👥 {result.deptName}</span><span className="text-xs bg-white border px-2 py-0.5 rounded-full text-gray-500">{result.members?.length || 0} 人</span></div>
+          <ul className="divide-y divide-gray-50">
+            {(result.members || []).map((m: any, i: number) => (
+              <li key={i} className="px-4 py-2.5 flex items-center justify-between text-sm">
+                <span className="font-medium text-gray-800">{m.name}</span>
+                <span className="text-xs text-gray-400">{m.jobTitle}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      );
+    }
+
+    if (toolName === 'searchEmployee') {
+      if (!hasResult) return <div key={`tool-${index}`} className="text-sm text-gray-500 italic p-3">🔍 正在搜索员工...</div>;
+      if (result.error || result.message) return <div key={`tool-${index}`} className="text-sm text-gray-500 p-3">{result.error || result.message}</div>;
+      return (
+        <div key={`tool-${index}`} className="my-4 w-72 md:w-[380px] rounded-2xl border border-indigo-200 bg-white shadow-sm overflow-hidden">
+          <div className="bg-indigo-50 px-4 py-3 border-b border-indigo-100"><span className="font-bold text-sm text-indigo-800">🔍 搜索结果</span></div>
+          <ul className="divide-y divide-gray-50">
+            {(result.results || []).map((e: any, i: number) => (
+              <li key={i} className="px-4 py-2.5 text-sm">
+                <div className="flex items-center justify-between"><span className="font-medium text-gray-800">{e.name}</span><span className={`text-xs px-1.5 py-0.5 rounded ${e.active ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-400'}`}>{e.active ? '在职' : '离职'}</span></div>
+                <div className="text-xs text-gray-400 mt-0.5">{e.department} · {e.jobTitle}{e.phone ? ` · ${e.phone}` : ''}</div>
+              </li>
+            ))}
+          </ul>
+        </div>
+      );
+    }
+
+    if (toolName === 'updateEmployee') {
+      if (!hasResult) return <div key={`tool-${index}`} className="text-sm text-gray-500 italic p-3">✏️ 正在修改员工信息...</div>;
+      if (result.error) return <div key={`tool-${index}`} className="text-sm text-red-500 p-3">❌ {result.error}</div>;
+      return (
+        <div key={`tool-${index}`} className="my-4 w-72 md:w-[340px] rounded-2xl border border-green-200 bg-green-50/50 p-5 shadow-sm">
+          <div className="flex items-center gap-2 mb-2"><span className="text-green-600 font-bold">✅ 修改成功</span></div>
+          <div className="text-sm text-gray-700">{result.message}</div>
+        </div>
+      );
+    }
+
+    if (toolName === 'getCompanyStats') {
+      if (!hasResult) return <div key={`tool-${index}`} className="text-sm text-gray-500 italic p-3">📊 正在统计全公司数据...</div>;
+      if (result.error) return <div key={`tool-${index}`} className="text-sm text-red-500 p-3">{result.error}</div>;
+      const r = result;
+      return (
+        <div key={`tool-${index}`} className="my-4 w-72 md:w-[360px] rounded-2xl border border-indigo-200 bg-indigo-50/40 p-5 shadow-sm">
+          <h3 className="text-sm font-bold text-indigo-900 mb-3">📊 全公司统计 · {r.month}</h3>
+          <div className="grid grid-cols-2 gap-2 mb-3">
+            <div className="bg-green-50 border border-green-100 rounded-xl p-2.5 text-center"><div className="text-lg font-bold text-green-700">{r.totalActive}</div><div className="text-[10px] text-green-600">在职</div></div>
+            <div className="bg-gray-50 border border-gray-200 rounded-xl p-2.5 text-center"><div className="text-lg font-bold text-gray-500">{r.totalInactive}</div><div className="text-[10px] text-gray-400">离职/禁用</div></div>
+          </div>
+          <div className="text-xs text-gray-500 space-y-1">
+            <div>考勤已提交：{r.attendanceReported} 人 · 异常合计：{r.totalAnomalies} 次 · 人均 {r.anomalyRate}</div>
+            {r.departmentDistribution && <div className="flex flex-wrap gap-1 mt-1">{Object.entries(r.departmentDistribution).map(([dept, count]) => <span key={dept} className="bg-white border rounded px-1.5 py-0.5">{dept} {count as number}人</span>)}</div>}
+          </div>
+        </div>
+      );
+    }
+
     if (toolName === 'searchCompanyPolicies') {
       if (!hasResult) return <div key={`tool-${index}`} className="text-sm text-gray-500 italic p-3">📚 正在检索公司政策文档...</div>;
       if (result.error) return <div key={`tool-${index}`} className="text-sm text-red-500 p-3">{result.error}</div>;

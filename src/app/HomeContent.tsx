@@ -13,32 +13,30 @@ const DICT = {
   zh: {
     title: "AI 智能秘书",
     subtitle: "你的 HR 与 IT 专属副驾",
-    greeting: "今天能帮到你什么？",
-    greetingSub: "试着问问关于年假余额、重置密码或者查询最近的报销进度。",
-    suggestions: [
-      "我的年假还剩多少天？",
-      "我的电脑连不上 VPN 怎么办？",
-      "帮我解释一下这个月的工资扣款明细",
-      "如何申请新的设计软件授权？",
-    ],
+    greeting: { employee: "今天能帮到你什么？", manager: "团队管理助手就绪", admin: "系统管理模式，随时待命" },
+    greetingSub: { employee: "试着问问关于年假余额、重置密码或者查询最近的报销进度。", manager: "可以查看团队考勤、审批申请、了解团队动态。", admin: "可直接查询和修改员工数据，查看全公司统计。" },
+    suggestions: {
+      employee: ["我的年假还剩多少天？", "我的电脑连不上 VPN 怎么办？", "帮我解释一下这个月的工资扣款明细", "如何申请新的设计软件授权？"],
+      manager: ["查看团队本月考勤概览", "查看待我审批的申请", "团队本月出勤率怎么样", "最近谁请假了"],
+      admin: ["查询员工 张伟 的信息", "全公司目前在职多少人", "本月全公司考勤异常统计", "修改员工 刘洋 的部门为产品部"],
+    },
+    suggestionIcons: { employee: ['🏖️','💻','💰','🔑'], manager: ['📊','📋','📈','🏖️'], admin: ['🔍','👥','📊','✏️'] },
     placeholder: "有什么问题随时问我...",
     poweredBy: "基于火山引擎豆包大模型提供支持",
-    roles: { employee: "普通员工", hr: "HR专员", it_admin: "IT管理员", manager: "部门经理" }
   },
   en: {
     title: "AI Secretary",
     subtitle: "Your HR & IT Copilot",
-    greeting: "How can I help you today?",
-    greetingSub: "Try asking about your remaining leave balance, resetting your password, or tracking a recent expense.",
-    suggestions: [
-      "What is my remaining leave balance?",
-      "My laptop won't connect to the VPN",
-      "Explain my payroll deductions this month",
-      "How do I request a new software license?",
-    ],
+    greeting: { employee: "How can I help you today?", manager: "Team management assistant ready", admin: "Admin mode, ready to serve" },
+    greetingSub: { employee: "Try asking about your remaining leave balance, resetting your password, or tracking a recent expense.", manager: "Check team attendance, review approvals, or see team updates.", admin: "Search and update employee data, view company-wide stats." },
+    suggestions: {
+      employee: ["What is my remaining leave balance?", "My laptop won't connect to the VPN", "Explain my payroll deductions this month", "How do I request a new software license?"],
+      manager: ["Show team attendance this month", "View pending approvals", "Team attendance rate this month", "Who is on leave recently"],
+      admin: ["Search employee Zhang Wei", "How many active employees total", "Company-wide attendance anomalies", "Change employee Liu Yang's department"],
+    },
+    suggestionIcons: { employee: ['🏖️','💻','💰','🔑'], manager: ['📊','📋','📈','🏖️'], admin: ['🔍','👥','📊','✏️'] },
     placeholder: "Ask the secretary anything...",
     poweredBy: "Powered by Volcengine Doubao",
-    roles: { employee: "Employee", hr: "HR Rep", it_admin: "IT Admin", manager: "Manager" }
   }
 };
 
@@ -48,13 +46,11 @@ export default function HomeContent() {
   const router = useRouter();
   const supabase = createClient();
 
-  const [authUser, setAuthUser] = useState<{ email?: string; role?: string } | null>(null);
+  const [authUser, setAuthUser] = useState<{ email?: string; role?: string; effectiveRole?: string } | null>(null);
 
   useEffect(() => {
-    // Try getUser first (cookie-based), fallback to getSession
     supabase.auth.getUser().then(({ data: { user } }) => {
       if (!user) {
-        // Fallback: try session (may exist if cookie not yet synced)
         supabase.auth.getSession().then(({ data: { session } }) => {
           if (session?.user) fetchProfile(session.user.id, session.user.email);
         });
@@ -63,12 +59,16 @@ export default function HomeContent() {
       fetchProfile(user.id, user.email);
     });
 
-    function fetchProfile(uid: string, email?: string | null) {
+    async function fetchProfile(uid: string, email?: string | null) {
       setAuthUser({ email: email || '' });
-      supabase.from('profiles').select('role, name').eq('id', uid).single()
-        .then(({ data }) => {
-          if (data) setAuthUser({ email: email || '', role: data.role });
-        });
+      const { data: profile } = await supabase.from('profiles').select('role, name').eq('id', uid).single();
+      if (!profile) return;
+      let effectiveRole = profile.role; // admin stays admin
+      if (profile.role !== 'admin') {
+        const { data: managed } = await supabase.from('departments').select('id').eq('manager_id', uid).limit(1);
+        effectiveRole = managed && managed.length > 0 ? 'manager' : 'employee';
+      }
+      setAuthUser({ email: email || '', role: profile.role, effectiveRole });
     }
   }, []);
 
@@ -80,9 +80,11 @@ export default function HomeContent() {
 
   const { messages, sendMessage, status, error, clearError, setMessages } = useChat({
     // @ts-expect-error - AI SDK v6 React bindings
-    api: `/api/chat?role=${authUser?.role || 'employee'}`,
+    api: `/api/chat?role=${authUser?.effectiveRole || 'employee'}`,
     onError: (err) => { console.error('[useChat error]', err); },
   });
+
+  const eRole = (authUser?.effectiveRole || 'employee') as 'employee' | 'manager' | 'admin';
 
   const [input, setInput] = useState('');
   const [confirmedDrafts, setConfirmedDrafts] = useState<Set<string>>(new Set());
@@ -145,29 +147,65 @@ export default function HomeContent() {
 
   // ---- Dynamic shortcuts based on usage frequency ----
   const SHORTCUTS_KEY = 'ai_hr_shortcut_usage';
-  const ALL_SHORTCUTS = language === 'zh' ? [
-    { emoji: '🏖️', text: '我想请假', shortLabel: '请假', color: 'indigo' },
-    { emoji: '📊', text: '查一下我的年假余额', shortLabel: '年假余额', color: 'emerald' },
-    { emoji: '📋', text: '查看我的申请记录', shortLabel: '申请记录', color: 'amber' },
-    { emoji: '⏰', text: '查一下我的考勤记录', shortLabel: '考勤', color: 'sky' },
-    { emoji: '💰', text: '查一下我的薪资明细', shortLabel: '薪资明细', color: 'rose' },
-    { emoji: '🔑', text: '帮我重置密码', shortLabel: '重置密码', color: 'purple' },
-    { emoji: '💻', text: 'VPN连不上怎么办', shortLabel: 'VPN排障', color: 'cyan' },
-    { emoji: '📝', text: '帮我起草一封邮件', shortLabel: '起草邮件', color: 'orange' },
-    { emoji: '🧾', text: '我要报销', shortLabel: '报销', color: 'teal' },
-    { emoji: '🏥', text: '查一下我的社保信息', shortLabel: '社保', color: 'pink' },
-  ] : [
-    { emoji: '🏖️', text: 'I want to take leave', shortLabel: 'Leave', color: 'indigo' },
-    { emoji: '📊', text: 'Check my leave balance', shortLabel: 'Balance', color: 'emerald' },
-    { emoji: '📋', text: 'View my requests', shortLabel: 'Requests', color: 'amber' },
-    { emoji: '⏰', text: 'Check my attendance', shortLabel: 'Attendance', color: 'sky' },
-    { emoji: '💰', text: 'Check my salary details', shortLabel: 'Salary', color: 'rose' },
-    { emoji: '🔑', text: 'Reset my password', shortLabel: 'Password', color: 'purple' },
-    { emoji: '💻', text: 'VPN not working', shortLabel: 'VPN', color: 'cyan' },
-    { emoji: '📝', text: 'Draft an email for me', shortLabel: 'Email', color: 'orange' },
-    { emoji: '🧾', text: 'Submit expense report', shortLabel: 'Expense', color: 'teal' },
-    { emoji: '🏥', text: 'Check my insurance info', shortLabel: 'Insurance', color: 'pink' },
-  ];
+  type ShortcutItem = { emoji: string; text: string; shortLabel: string; color: string };
+  const ROLE_SHORTCUTS: Record<string, ShortcutItem[]> = {
+    employee: language === 'zh' ? [
+      { emoji: '🏖️', text: '我想请假', shortLabel: '请假', color: 'indigo' },
+      { emoji: '📊', text: '查一下我的年假余额', shortLabel: '年假余额', color: 'emerald' },
+      { emoji: '📋', text: '查看我的申请记录', shortLabel: '申请记录', color: 'amber' },
+      { emoji: '⏰', text: '查一下我的考勤记录', shortLabel: '考勤', color: 'sky' },
+      { emoji: '💰', text: '查一下我的薪资明细', shortLabel: '薪资明细', color: 'rose' },
+      { emoji: '🔑', text: '帮我重置密码', shortLabel: '重置密码', color: 'purple' },
+      { emoji: '💻', text: 'VPN连不上怎么办', shortLabel: 'VPN排障', color: 'cyan' },
+      { emoji: '📝', text: '帮我起草一封邮件', shortLabel: '起草邮件', color: 'orange' },
+      { emoji: '🧾', text: '我要报销', shortLabel: '报销', color: 'teal' },
+      { emoji: '🏥', text: '查一下我的社保信息', shortLabel: '社保', color: 'pink' },
+    ] : [
+      { emoji: '🏖️', text: 'I want to take leave', shortLabel: 'Leave', color: 'indigo' },
+      { emoji: '📊', text: 'Check my leave balance', shortLabel: 'Balance', color: 'emerald' },
+      { emoji: '📋', text: 'View my requests', shortLabel: 'Requests', color: 'amber' },
+      { emoji: '⏰', text: 'Check my attendance', shortLabel: 'Attendance', color: 'sky' },
+      { emoji: '💰', text: 'Check my salary details', shortLabel: 'Salary', color: 'rose' },
+      { emoji: '🔑', text: 'Reset my password', shortLabel: 'Password', color: 'purple' },
+      { emoji: '💻', text: 'VPN not working', shortLabel: 'VPN', color: 'cyan' },
+      { emoji: '📝', text: 'Draft an email for me', shortLabel: 'Email', color: 'orange' },
+      { emoji: '🧾', text: 'Submit expense report', shortLabel: 'Expense', color: 'teal' },
+      { emoji: '🏥', text: 'Check my insurance info', shortLabel: 'Insurance', color: 'pink' },
+    ],
+    manager: language === 'zh' ? [
+      { emoji: '📊', text: '查看团队本月考勤概览', shortLabel: '团队考勤', color: 'sky' },
+      { emoji: '📋', text: '查看待我审批的申请', shortLabel: '待审批', color: 'amber' },
+      { emoji: '📈', text: '团队本月出勤率怎么样', shortLabel: '出勤率', color: 'emerald' },
+      { emoji: '🏖️', text: '最近谁请假了', shortLabel: '谁请假了', color: 'indigo' },
+      { emoji: '👥', text: '查看我的团队成员', shortLabel: '团队花名册', color: 'purple' },
+      { emoji: '💰', text: '查一下我的薪资明细', shortLabel: '我的薪资', color: 'rose' },
+      { emoji: '🏖️', text: '我想请假', shortLabel: '我要请假', color: 'teal' },
+    ] : [
+      { emoji: '📊', text: 'Show team attendance this month', shortLabel: 'Team Attendance', color: 'sky' },
+      { emoji: '📋', text: 'View pending approvals', shortLabel: 'Approvals', color: 'amber' },
+      { emoji: '📈', text: 'Team attendance rate this month', shortLabel: 'Rate', color: 'emerald' },
+      { emoji: '🏖️', text: 'Who is on leave recently', shortLabel: 'On Leave', color: 'indigo' },
+      { emoji: '👥', text: 'Show my team members', shortLabel: 'Team', color: 'purple' },
+      { emoji: '💰', text: 'Check my salary details', shortLabel: 'My Salary', color: 'rose' },
+      { emoji: '🏖️', text: 'I want to take leave', shortLabel: 'My Leave', color: 'teal' },
+    ],
+    admin: language === 'zh' ? [
+      { emoji: '🔍', text: '查询员工信息', shortLabel: '查员工', color: 'indigo' },
+      { emoji: '👥', text: '全公司目前在职多少人', shortLabel: '在职统计', color: 'emerald' },
+      { emoji: '📊', text: '本月全公司考勤异常统计', shortLabel: '异常考勤', color: 'amber' },
+      { emoji: '✏️', text: '修改员工信息', shortLabel: '改信息', color: 'purple' },
+      { emoji: '💰', text: '全公司薪资总览', shortLabel: '薪资总览', color: 'rose' },
+      { emoji: '📋', text: '查看待审批的申请', shortLabel: '待审批', color: 'sky' },
+    ] : [
+      { emoji: '🔍', text: 'Search employee info', shortLabel: 'Search', color: 'indigo' },
+      { emoji: '👥', text: 'Total active employees', shortLabel: 'Headcount', color: 'emerald' },
+      { emoji: '📊', text: 'Company attendance anomalies', shortLabel: 'Anomalies', color: 'amber' },
+      { emoji: '✏️', text: 'Update employee info', shortLabel: 'Update', color: 'purple' },
+      { emoji: '💰', text: 'Company salary overview', shortLabel: 'Salary', color: 'rose' },
+      { emoji: '📋', text: 'View pending approvals', shortLabel: 'Approvals', color: 'sky' },
+    ],
+  };
+  const ALL_SHORTCUTS = ROLE_SHORTCUTS[eRole] || ROLE_SHORTCUTS.employee;
 
   const getUsage = (): Record<string, number> => {
     try { return JSON.parse(localStorage.getItem(SHORTCUTS_KEY) || '{}'); } catch { return {}; }
@@ -351,14 +389,14 @@ export default function HomeContent() {
                   <Bot size={40} className="text-white" />
                 </div>
               </div>
-              <h2 className="mb-2 text-2xl md:text-3xl font-bold bg-gradient-to-r from-slate-800 to-slate-600 bg-clip-text text-transparent">{t.greeting}</h2>
-              <p className="max-w-md text-sm text-slate-400 leading-relaxed">{t.greetingSub}</p>
+              <h2 className="mb-2 text-2xl md:text-3xl font-bold bg-gradient-to-r from-slate-800 to-slate-600 bg-clip-text text-transparent">{t.greeting[eRole]}</h2>
+              <p className="max-w-md text-sm text-slate-400 leading-relaxed">{t.greetingSub[eRole]}</p>
               <div className="mt-10 grid w-full max-w-2xl grid-cols-1 gap-3 md:grid-cols-2">
-                {t.suggestions.map((s, i) => (
+                {t.suggestions[eRole].map((s: string, i: number) => (
                   <button key={i} onClick={() => quickSend(s)}
                     className="group flex text-left items-center gap-3 rounded-2xl border border-slate-200/80 bg-white/80 backdrop-blur-sm p-4 text-sm text-slate-600 shadow-sm transition-all duration-200 hover:border-indigo-200 hover:shadow-md hover:shadow-indigo-100/30 hover:-translate-y-0.5">
                     <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-indigo-50 to-purple-50 text-indigo-500 group-hover:from-indigo-100 group-hover:to-purple-100 transition-colors">
-                      {['🏖️','💻','💰','🔑'][i] || '💬'}
+                      {(t.suggestionIcons[eRole] || [])[i] || '💬'}
                     </span>
                     <span className="leading-snug">{s}</span>
                   </button>
