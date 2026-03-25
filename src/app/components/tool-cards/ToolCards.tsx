@@ -290,10 +290,37 @@ export default function ToolCards({ message, confirmedDrafts, setConfirmedDrafts
       );
     }
 
+    if (toolName === 'submitITTicket') {
+      if (!hasResult) return (
+        <div key={`tool-${index}`} className="my-4 w-72 md:w-[340px] rounded-2xl border border-sky-200 bg-sky-50/40 p-5 shadow-sm">
+          <div className="flex items-center gap-2 text-sky-700 mb-2"><span className="text-lg">🔧</span><span className="text-sm font-semibold">正在创建 IT 工单...</span></div>
+          <div className="flex gap-1.5 items-center"><span className="h-2 w-2 animate-bounce rounded-full bg-sky-300"></span><span className="h-2 w-2 animate-bounce rounded-full bg-sky-400" style={{ animationDelay: '0.15s' }}></span><span className="h-2 w-2 animate-bounce rounded-full bg-sky-500" style={{ animationDelay: '0.3s' }}></span></div>
+        </div>
+      );
+      return (
+        <div key={`tool-${index}`} className="my-4 w-72 md:w-[340px] rounded-2xl border border-sky-200 bg-sky-50/40 p-5 shadow-sm">
+          <div className="flex items-center gap-2 mb-3"><span className="text-lg">🔧</span><span className="font-bold text-sky-900">IT 工单已创建</span></div>
+          <div className="space-y-2 text-sm">
+            <div className="flex justify-between"><span className="text-gray-500">工单号</span><span className="font-mono font-medium text-sky-700">{result.ticketId}</span></div>
+            <div className="flex justify-between"><span className="text-gray-500">问题类型</span><span className="font-medium">{args.issueType}</span></div>
+            <div className="flex justify-between"><span className="text-gray-500">状态</span><span className="text-amber-600 font-semibold">{result.status}</span></div>
+          </div>
+          {result.resolution && <p className="mt-3 text-xs text-gray-600 bg-white rounded-lg p-2.5 border border-gray-100">{result.resolution}</p>}
+        </div>
+      );
+    }
+
+    if (toolName === 'searchCompanyPolicies') {
+      if (!hasResult) return <div key={`tool-${index}`} className="text-sm text-gray-500 italic p-3">📚 正在检索公司政策文档...</div>;
+      if (result.error) return <div key={`tool-${index}`} className="text-sm text-red-500 p-3">{result.error}</div>;
+      return null;
+    }
+
+    // 兜底：未知工具，用友好文案
     return (
-      <div key={`tool-${index}`} className="my-3 rounded-xl border bg-gray-50 p-4 shadow-sm">
-        <div className="flex items-center gap-2 font-medium text-gray-700 mb-2"><Bot size={16} className="text-blue-500" /><span>系统调用: <span className="text-blue-600 font-mono text-sm">{toolName}</span></span></div>
-        {hasResult ? <div className="mt-2 text-sm text-green-600 bg-green-50 p-2 rounded inline-flex items-center gap-2">✅ 已返回结果</div> : <div className="mt-2 text-sm text-gray-500 italic">正在执行动作...</div>}
+      <div key={`tool-${index}`} className="my-3 rounded-xl border border-slate-200 bg-slate-50 p-4 shadow-sm">
+        <div className="flex items-center gap-2 text-slate-600 mb-1"><Bot size={16} className="text-indigo-400" /><span className="text-sm font-medium">正在处理你的请求...</span></div>
+        {hasResult ? <div className="mt-2 text-sm text-green-600 bg-green-50 px-3 py-1.5 rounded-lg inline-flex items-center gap-1.5">✅ 处理完成</div> : <div className="mt-2 text-sm text-slate-400 italic">请稍候...</div>}
       </div>
     );
   });
