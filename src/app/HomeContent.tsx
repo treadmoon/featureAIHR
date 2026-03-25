@@ -86,6 +86,8 @@ export default function HomeContent() {
 
   const [input, setInput] = useState('');
   const [confirmedDrafts, setConfirmedDrafts] = useState<Set<string>>(new Set());
+  const [feedbackSent, setFeedbackSent] = useState<Set<string>>(new Set());
+  const [feedbackModal, setFeedbackModal] = useState<{ id: string; rating: string } | null>(null);
   const [msgTimestamps] = useState<Map<string, number>>(() => new Map());
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -124,7 +126,22 @@ export default function HomeContent() {
     }
   }, [status, error]);
 
-  const handleClear = () => { setMessages([]); setConfirmedDrafts(new Set()); };
+  const handleClear = () => { setMessages([]); setConfirmedDrafts(new Set()); setFeedbackSent(new Set()); };
+
+  const sendFeedback = async (msgId: string, rating: string, reason?: string) => {
+    const msg = messages.find(m => m.id === msgId);
+    const prevUser = messages[messages.findIndex(m => m.id === msgId) - 1];
+    setFeedbackSent(prev => new Set(prev).add(msgId));
+    setFeedbackModal(null);
+    fetch('/api/feedback', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        messageId: msgId, rating, reason,
+        userMessage: prevUser?.parts?.filter((p: any) => p.type === 'text').map((p: any) => p.text).join('') || '',
+        assistantMessage: msg?.parts?.filter((p: any) => p.type === 'text').map((p: any) => p.text).join('') || '',
+      }),
+    }).catch(() => {});
+  };
 
   // ---- Dynamic shortcuts based on usage frequency ----
   const SHORTCUTS_KEY = 'ai_hr_shortcut_usage';
@@ -370,7 +387,17 @@ export default function HomeContent() {
                   <ToolCards message={message} confirmedDrafts={confirmedDrafts} setConfirmedDrafts={setConfirmedDrafts} isLoading={isLoading} quickSend={quickSend} />
                   {(!message.parts || message.parts.length === 0) && <p className="leading-relaxed whitespace-pre-wrap">{message.content}</p>}
                 </div>
-                <span className={`text-[10px] text-gray-400 px-1 ${message.role === 'user' ? 'text-right' : 'text-left'}`}>{fmtTime(message.id)}</span>
+                <span className={`text-[10px] text-gray-400 px-1 flex items-center gap-1.5 ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                  {fmtTime(message.id)}
+                  {message.role === 'assistant' && !(mIndex === messages.length - 1 && status === 'streaming') && (
+                    feedbackSent.has(message.id)
+                      ? <span className="text-[10px] text-emerald-400 ml-1">已反馈</span>
+                      : <>
+                          <button onClick={() => sendFeedback(message.id, 'good')} className="ml-1 hover:scale-125 transition-transform" title="有帮助">👍</button>
+                          <button onClick={() => setFeedbackModal({ id: message.id, rating: 'bad' })} className="hover:scale-125 transition-transform" title="不满意">👎</button>
+                        </>
+                  )}
+                </span>
                 </div>
               </div>
             ))
@@ -390,6 +417,21 @@ export default function HomeContent() {
           <div ref={messagesEndRef} />
         </div>
       </main>
+
+      {feedbackModal && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={() => setFeedbackModal(null)}>
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm p-5" onClick={e => e.stopPropagation()}>
+            <h3 className="font-semibold text-gray-800 mb-3">👎 哪里不满意？</h3>
+            <div className="flex flex-wrap gap-2 mb-3">
+              {['回答不准确', '没有解决问题', '回复太慢', '信息不完整', '其他'].map(r => (
+                <button key={r} onClick={() => sendFeedback(feedbackModal.id, 'bad', r)}
+                  className="px-3 py-1.5 text-xs bg-gray-100 hover:bg-red-50 hover:text-red-600 rounded-lg transition-colors border border-gray-200">{r}</button>
+              ))}
+            </div>
+            <button onClick={() => setFeedbackModal(null)} className="text-xs text-gray-400 hover:text-gray-600">取消</button>
+          </div>
+        </div>
+      )}
 
       <footer className="fixed bottom-0 w-full bg-gradient-to-t from-slate-50 via-slate-50/95 to-transparent pt-6">
         {status === 'error' && (
