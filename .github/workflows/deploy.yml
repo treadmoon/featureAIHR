@@ -66,6 +66,7 @@ jobs:
               -p 51984:3000 \
               -e VOLCENGINE_API_KEY=${{ secrets.VOLCENGINE_API_KEY }} \
               -e VOLCENGINE_MODEL_ID=${{ secrets.VOLCENGINE_MODEL_ID }} \
+              -e VOLCENGINE_EMBEDDING_MODEL_ID=${{ secrets.VOLCENGINE_EMBEDDING_MODEL_ID }} \
               -e NEXT_PUBLIC_SUPABASE_URL=${{ secrets.NEXT_PUBLIC_SUPABASE_URL }} \
               -e NEXT_PUBLIC_SUPABASE_ANON_KEY=${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }} \
               -e SUPABASE_SERVICE_ROLE_KEY=${{ secrets.SUPABASE_SERVICE_ROLE_KEY }} \

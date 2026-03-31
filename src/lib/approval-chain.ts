@@ -1,12 +1,8 @@
-import { createClient } from '@supabase/supabase-js';
+import { supabaseAdmin } from '@/lib/supabase';
 import { logDiag } from '@/lib/diagnosis-log';
 
-function sb() {
-  return createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!);
-}
-
 export async function buildSteps(type: string, applicantId: string, payload: Record<string, unknown>) {
-  const admin = sb();
+  const admin = supabaseAdmin!;
   const { data: applicant } = await admin.from('profiles').select('department_id').eq('id', applicantId).single();
   let managerId: string | null = null;
   if (applicant?.department_id) {
@@ -67,7 +63,7 @@ export async function buildSteps(type: string, applicantId: string, payload: Rec
 
 /** Create an approval request with auto-generated chain. Returns { request } or { error }. */
 export async function createApprovalRequest(type: string, applicantId: string, payload: Record<string, unknown>): Promise<{ request?: any; error?: string }> {
-  const admin = sb();
+  const admin = supabaseAdmin!;
   const steps = await buildSteps(type, applicantId, payload);
 
   const { data: request, error } = await admin.from('approval_requests').insert({

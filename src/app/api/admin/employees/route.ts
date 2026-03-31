@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase-server';
-import { createClient as createAdminClient } from '@supabase/supabase-js';
+import { supabaseAdmin as globalAdmin } from '@/lib/supabase';
 
 // Admin guard helper
 async function requireAdmin() {
@@ -22,10 +22,7 @@ export async function POST(req: NextRequest) {
   }
 
   // Use service role to create user in auth.users
-  const supabaseAdmin = createAdminClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!
-  );
+  const supabaseAdmin = globalAdmin!;
 
   const { data: newUser, error: authError } = await supabaseAdmin.auth.admin.createUser({
     email,
@@ -57,10 +54,7 @@ export async function PATCH(req: NextRequest) {
 
   const { id, is_active } = await req.json();
 
-  const supabaseAdmin = createAdminClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!
-  );
+  const supabaseAdmin = globalAdmin!;
 
   await supabaseAdmin.from('profiles').update({ is_active }).eq('id', id);
 

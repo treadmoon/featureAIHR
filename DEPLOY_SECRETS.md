@@ -16,6 +16,7 @@
 |---|---|---|
 | `VOLCENGINE_API_KEY` | 火山方舟 API 密钥 | [火山方舟控制台](https://console.volcengine.com/ark) → API Key 管理 |
 | `VOLCENGINE_MODEL_ID` | 豆包模型的推理接入点 ID，格式 `ep-xxxxxxxx-xxxxxxxx` | 火山方舟 → 在线推理 → 接入点管理 |
+| `VOLCENGINE_EMBEDDING_MODEL_ID` | 豆包 Embedding 模型接入点 ID（用于政策文档 RAG 检索），可选 | 火山方舟 → 在线推理 → Embedding 接入点 |
 
 ## Supabase 数据库（3 个）
 
