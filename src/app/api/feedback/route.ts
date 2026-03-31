@@ -9,7 +9,7 @@ export async function POST(req: Request) {
   const { messageId, rating, userMessage, assistantMessage, reason } = await req.json();
 
   await logDiag({
-    level: rating === 'bad' ? 'warn' : 'warn',
+    level: rating === 'bad' ? 'warn' : 'info',
     source: 'chat:feedback',
     message: `用户反馈: ${rating}`,
     context: {

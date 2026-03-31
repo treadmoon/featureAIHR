@@ -1,7 +1,7 @@
 import { supabaseAdmin } from '@/lib/supabase';
 
 export type DiagEntry = {
-  level: 'warn' | 'error';
+  level: 'info' | 'warn' | 'error';
   source: string;
   message: string;
   context?: Record<string, unknown>;

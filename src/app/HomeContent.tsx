@@ -79,9 +79,11 @@ export default function HomeContent() {
     router.refresh();
   };
 
+  const chatRole = authUser?.effectiveRole || 'employee';
+
   const { messages, sendMessage, status, error, clearError, setMessages } = useChat({
     // @ts-expect-error - AI SDK v6 React bindings
-    api: `/api/chat?role=${authUser?.effectiveRole || 'employee'}`,
+    api: `/api/chat?role=${chatRole}`,
     onError: (err) => { console.error('[useChat error]', err); },
   });
 
@@ -126,12 +128,15 @@ export default function HomeContent() {
   useEffect(() => {
     if (status === 'streaming' || status === 'submitted' || messages.length === 0) return;
     if (messages.length <= savedMsgCount.current) return;
-    const newMsgs = messages.slice(savedMsgCount.current);
+    // 只保存真正的新消息（跳过 hist- 开头的历史消息）
+    const newMsgs = messages.slice(savedMsgCount.current).filter((m: any) => !m.id?.startsWith('hist-'));
     savedMsgCount.current = messages.length;
+    if (!newMsgs.length) return;
     (async () => {
       let sid = currentSessionId;
       if (!sid) {
-        const res = await fetch('/api/chat-history', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'create' }) });
+        const firstText = (newMsgs.find((m: any) => m.role === 'user') as any)?.parts?.find((p: any) => p.type === 'text')?.text?.slice(0, 20) || '新对话';
+        const res = await fetch('/api/chat-history', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'create', title: firstText }) });
         const data = await res.json();
         sid = data?.id;
         if (sid) setCurrentSessionId(sid);
@@ -256,14 +261,14 @@ export default function HomeContent() {
       { emoji: '👥', text: '全公司目前在职多少人', shortLabel: '在职统计', color: 'emerald' },
       { emoji: '📊', text: '本月全公司考勤异常统计', shortLabel: '异常考勤', color: 'amber' },
       { emoji: '✏️', text: '修改员工信息', shortLabel: '改信息', color: 'purple' },
-      { emoji: '💰', text: '全公司薪资总览', shortLabel: '薪资总览', color: 'rose' },
+      { emoji: '💰', text: '查看全公司统计数据', shortLabel: '公司统计', color: 'rose' },
       { emoji: '📋', text: '查看待审批的申请', shortLabel: '待审批', color: 'sky' },
     ] : [
       { emoji: '🔍', text: 'Search employee info', shortLabel: 'Search', color: 'indigo' },
       { emoji: '👥', text: 'Total active employees', shortLabel: 'Headcount', color: 'emerald' },
       { emoji: '📊', text: 'Company attendance anomalies', shortLabel: 'Anomalies', color: 'amber' },
       { emoji: '✏️', text: 'Update employee info', shortLabel: 'Update', color: 'purple' },
-      { emoji: '💰', text: 'Company salary overview', shortLabel: 'Salary', color: 'rose' },
+      { emoji: '💰', text: 'Company stats overview', shortLabel: 'Stats', color: 'rose' },
       { emoji: '📋', text: 'View pending approvals', shortLabel: 'Approvals', color: 'sky' },
     ],
   };

@@ -7,7 +7,7 @@ export async function GET() {
   if (!user) return new Response('未登录', { status: 401 });
   if (!supabaseAdmin) return Response.json([]);
 
-  const { data: profile } = await supabase.from('profiles').select('role, name').eq('id', user.id).single();
+  const { data: profile } = await supabase.from('profiles').select('role, name, department').eq('id', user.id).single();
   const role = profile?.role || 'employee';
 
   // 判断是否经理
@@ -19,16 +19,18 @@ export async function GET() {
   const todayStr = today.toISOString().slice(0, 10);
   const in30 = new Date(Date.now() + 30 * 86400000).toISOString().slice(0, 10);
 
-  // 1. 今日生日（经理/管理员可见全部，员工只看同部门）
+  // 1. 今日生日（经理/管理员看全公司，员工只看同部门）
   const { data: birthdays } = await supabaseAdmin
     .from('profiles')
     .select('name, birthday, department')
     .eq('is_active', true)
     .not('birthday', 'is', null);
+  const myDept = profile?.department || '';
   const todayBirthdays = (birthdays || []).filter((p: any) => {
     if (!p.birthday) return false;
-    const bd = p.birthday.slice(5); // MM-DD
-    return bd === todayStr.slice(5);
+    const bd = p.birthday.slice(5);
+    if (bd !== todayStr.slice(5)) return false;
+    return isManager || p.department === myDept;
   });
   if (todayBirthdays.length > 0) {
     notifications.push({

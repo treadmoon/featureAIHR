@@ -43,12 +43,9 @@ export async function POST(req: NextRequest) {
       parts: m.parts || [],
     }));
     await supabase.from('chat_messages').insert(rows);
-    // 更新标题（取第一条用户消息前20字）和计数
-    const firstUser = body.messages.find((m: any) => m.role === 'user');
-    const title = firstUser?.parts?.find((p: any) => p.type === 'text')?.text?.slice(0, 20) || '新对话';
     await supabase
       .from('chat_sessions')
-      .update({ title, message_count: body.totalCount || body.messages.length })
+      .update({ message_count: body.totalCount || body.messages.length })
       .eq('id', body.sessionId);
     return Response.json({ ok: true });
   }
