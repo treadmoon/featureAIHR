@@ -70,7 +70,7 @@ export default function NewEmployeePage() {
 
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">初始密码 *</label>
-            <input type="text" required minLength={6} value={form.password} onChange={e => set('password', e.target.value)}
+            <input type="password" required minLength={6} value={form.password} onChange={e => set('password', e.target.value)}
               placeholder="至少6位"
               className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
           </div>

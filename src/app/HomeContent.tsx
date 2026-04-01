@@ -50,9 +50,9 @@ export default function HomeContent() {
   const [authUser, setAuthUser] = useState<{ email?: string; role?: string; effectiveRole?: string } | null>(null);
 
   useEffect(() => {
-    supabase.auth.getUser().then(({ data: { user } }) => {
+    supabase.auth.getUser().then(({ data: { user } }: any) => {
       if (!user) {
-        supabase.auth.getSession().then(({ data: { session } }) => {
+        supabase.auth.getSession().then(({ data: { session } }: any) => {
           if (session?.user) fetchProfile(session.user.id, session.user.email);
         });
         return;

@@ -4,6 +4,7 @@ import { supabaseAdmin } from '@/lib/supabase';
 import { createClient } from '@/lib/supabase-server';
 import { createApprovalRequest } from '@/lib/approval-chain';
 import { logDiag } from '@/lib/diagnosis-log';
+import { rateLimit } from '@/lib/rate-limit';
 import { z } from 'zod';
 
 const volcengine = createOpenAI({
@@ -11,7 +12,7 @@ const volcengine = createOpenAI({
   baseURL: 'https://ark.cn-beijing.volces.com/api/v3',
 });
 
-export const maxDuration = 30;
+export const maxDuration = 60;
 
 // DB helper — always uses service role (bypasses RLS)
 async function db(query: (sb: NonNullable<typeof supabaseAdmin>) => PromiseLike<{ data: any; error: any }>): Promise<any> {
@@ -29,6 +30,9 @@ export async function POST(req: Request) {
     const supabase = await createClient();
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return new Response(JSON.stringify({ error: '未登录' }), { status: 401, headers: { 'Content-Type': 'application/json' } });
+
+    const { ok } = rateLimit(`chat:${user.id}`, 20, 60000);
+    if (!ok) return new Response(JSON.stringify({ error: '请求过于频繁，请稍后再试' }), { status: 429, headers: { 'Content-Type': 'application/json' } });
 
     const uid = user.id;
     const { messages } = await req.json();
@@ -419,7 +423,7 @@ ${role === 'admin' ? '你是系统管理员，可以搜索/修改任意员工信
             const in14 = new Date(Date.now() + 14 * 86400000).toISOString().slice(0, 10);
             const ago7 = new Date(Date.now() - 7 * 86400000).toISOString().slice(0, 10);
             // 查已批准的请假申请
-            const reqs = await db(sb => sb.from('approval_requests').select('applicant_id, payload, created_at').eq('type', 'leave').eq('status', 'approved'));
+            const reqs = await db(sb => sb.from('approval_requests').select('applicant_id, payload, created_at').eq('type', 'leave').eq('status', 'approved').gte('created_at', new Date(Date.now() - 30 * 86400000).toISOString()));
             if (!reqs?.length) return { leaves: [], message: '近期没有已批准的请假记录' };
             // 过滤近期（过去7天到未来14天）
             const leaveLabels: Record<string, string> = { annual: '年假', sick: '病假', personal: '事假', lieu: '调休', marriage: '婚假', maternity: '产假', bereavement: '丧假' };

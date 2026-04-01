@@ -7,11 +7,9 @@ export default async function ProfilePage() {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect('/login');
 
-  const { data: profile } = await supabase.from('profiles').select('role').eq('id', user.id).single();
-  const isAdmin = profile?.role === 'admin';
-
   const { data: employee } = await supabase.from('profiles').select('*').eq('id', user.id).single();
   if (!employee) redirect('/login');
+  const isAdmin = employee.role === 'admin';
 
   const [transfers, performance, attendance, tickets, expenses, empPositions, departments, positions, jobLevels] = await Promise.all([
     supabase.from('employee_transfers').select('*').eq('employee_id', user.id).order('effective_date', { ascending: false }),
