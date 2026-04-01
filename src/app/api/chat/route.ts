@@ -6,6 +6,7 @@ import { createApprovalRequest } from '@/lib/approval-chain';
 import { logDiag } from '@/lib/diagnosis-log';
 import { rateLimit } from '@/lib/rate-limit';
 import { detectInjection } from '@/lib/prompt-guard';
+import { cacheKey, getCache, setCache, shouldCache } from '@/lib/llm-cache';
 import { z } from 'zod';
 
 const volcengine = createOpenAI({
@@ -49,6 +50,19 @@ export async function POST(req: Request) {
 
     const { searchParams } = new URL(req.url);
     const role = searchParams.get('role');
+
+    // LLM 缓存：查询类问题命中缓存直接返回
+    const ck = cacheKey(uid, role || 'employee', userText);
+    if (shouldCache(userText)) {
+      const cached = getCache(ck);
+      if (cached) {
+        // 构造 AI SDK UI message stream 格式
+        const streamParts = [
+          `0:${JSON.stringify({ role: 'assistant', content: cached.response })}\n`,
+        ];
+        return new Response(streamParts.join(''), { headers: { 'Content-Type': 'text/plain; charset=utf-8', 'X-Cache': 'HIT' } });
+      }
+    }
 
     // Get user profile for system prompt context
     const profile = await db(sb => sb.from('profiles').select('name, department, job_title').eq('id', uid).single());
@@ -534,6 +548,11 @@ ${role === 'admin' ? '你是系统管理员，可以搜索/修改任意员工信
         }),
       },
     });
+
+    // 异步写缓存（流结束后）
+    if (shouldCache(userText)) {
+      Promise.resolve(result.text).then(text => { if (text) setCache(ck, text); }).catch(() => {});
+    }
 
     return result.toUIMessageStreamResponse();
   } catch (error: any) {
