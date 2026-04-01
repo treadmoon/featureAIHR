@@ -310,6 +310,29 @@ export default function ToolCards({ message, confirmedDrafts, setConfirmedDrafts
       );
     }
 
+    if (toolName === 'getTeamLeaveCalendar') {
+      if (!hasResult) return <div key={`tool-${index}`} className="text-sm text-gray-500 italic p-3">🏖️ 正在查询团队请假情况...</div>;
+      if (result.error) return <div key={`tool-${index}`} className="text-sm text-red-500 p-3">{result.error}</div>;
+      const leaves = result.leaves || [];
+      return (
+        <div key={`tool-${index}`} className="my-4 w-72 md:w-[380px] rounded-2xl border border-indigo-200 bg-white shadow-sm overflow-hidden">
+          <div className="bg-indigo-50 px-4 py-3 border-b border-indigo-100 flex items-center justify-between"><span className="font-bold text-sm text-indigo-800">🏖️ 团队请假日历</span><span className="text-xs text-gray-400">{result.period}</span></div>
+          {leaves.length === 0 ? (
+            <div className="p-4 text-center text-sm text-gray-400">近期没有人请假</div>
+          ) : (
+            <ul className="divide-y divide-gray-50">
+              {leaves.map((l: any, i: number) => (
+                <li key={i} className="px-4 py-2.5 flex items-center justify-between text-sm">
+                  <div><span className="font-medium text-gray-800">{l.name}</span><span className="text-xs text-gray-400 ml-1.5">{l.type}</span></div>
+                  <span className="text-xs text-gray-500">{l.start} ~ {l.end}{l.days ? ` · ${l.days}天` : ''}</span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      );
+    }
+
     if (toolName === 'getTeamAttendance') {
       if (!hasResult) return <div key={`tool-${index}`} className="text-sm text-gray-500 italic p-3">📊 正在查询团队考勤...</div>;
       if (result.error) return <div key={`tool-${index}`} className="text-sm text-red-500 p-3">{result.error}</div>;

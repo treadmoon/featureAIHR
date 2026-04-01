@@ -410,6 +410,37 @@ ${role === 'admin' ? '你是系统管理员，可以搜索/修改任意员工信
           },
         }),
 
+        getTeamLeaveCalendar: tool({
+          description: '查看团队近期请假情况：谁请假了、什么时间、什么类型（仅 manager/admin 可用）',
+          inputSchema: z.object({}),
+          execute: async () => {
+            if (role !== 'manager' && role !== 'admin') return { error: '仅经理或管理员可查看' };
+            const today = new Date().toISOString().slice(0, 10);
+            const in14 = new Date(Date.now() + 14 * 86400000).toISOString().slice(0, 10);
+            const ago7 = new Date(Date.now() - 7 * 86400000).toISOString().slice(0, 10);
+            // 查已批准的请假申请
+            const reqs = await db(sb => sb.from('approval_requests').select('applicant_id, payload, created_at').eq('type', 'leave').eq('status', 'approved'));
+            if (!reqs?.length) return { leaves: [], message: '近期没有已批准的请假记录' };
+            // 过滤近期（过去7天到未来14天）
+            const leaveLabels: Record<string, string> = { annual: '年假', sick: '病假', personal: '事假', lieu: '调休', marriage: '婚假', maternity: '产假', bereavement: '丧假' };
+            const empIds = [...new Set(reqs.map((r: any) => r.applicant_id))];
+            const profiles = await db(sb => sb.from('profiles').select('id, name, department').in('id', empIds));
+            const nameMap = new Map((profiles || []).map((p: any) => [p.id, p.name]));
+            const leaves = reqs.filter((r: any) => {
+              const start = r.payload?.start_date || r.payload?.['开始日期'] || '';
+              const end = r.payload?.end_date || r.payload?.['结束日期'] || '';
+              return (start >= ago7 && start <= in14) || (end >= ago7 && end <= in14);
+            }).map((r: any) => ({
+              name: nameMap.get(r.applicant_id) || '未知',
+              type: leaveLabels[r.payload?.leave_type] || r.payload?.['假期类型'] || '请假',
+              start: r.payload?.start_date || r.payload?.['开始日期'] || '',
+              end: r.payload?.end_date || r.payload?.['结束日期'] || '',
+              days: r.payload?.days || r.payload?.['天数'] || '',
+            })).sort((a: any, b: any) => a.start.localeCompare(b.start));
+            return { leaves, period: `${ago7} ~ ${in14}` };
+          },
+        }),
+
         getTeamMembers: tool({
           description: '查看当前经理管辖部门的团队花名册（仅 manager/admin 可用）',
           inputSchema: z.object({}),

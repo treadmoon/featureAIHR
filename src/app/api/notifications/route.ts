@@ -76,6 +76,36 @@ export async function GET() {
     }
   }
 
+  // 3b. 我发起的申请有新结果（最近3天内被通过或驳回的）
+  const threeDaysAgo = new Date(Date.now() - 3 * 86400000).toISOString();
+  const { data: myResults } = await supabaseAdmin
+    .from('approval_requests')
+    .select('id, type, status, updated_at')
+    .eq('applicant_id', user.id)
+    .in('status', ['approved', 'rejected'])
+    .gte('updated_at', threeDaysAgo);
+  if (myResults && myResults.length > 0) {
+    const typeLabels: Record<string, string> = { leave: '请假', expense: '报销', overtime: '加班', attendance_fix: '补卡', transfer: '调岗', salary_adjust: '调薪' };
+    const approved = myResults.filter((r: any) => r.status === 'approved');
+    const rejected = myResults.filter((r: any) => r.status === 'rejected');
+    if (approved.length > 0) {
+      notifications.push({
+        type: 'approval_approved', icon: '✅',
+        title: `你的${approved.map((r: any) => typeLabels[r.type] || r.type).join('、')}申请已通过`,
+        desc: `共 ${approved.length} 条`,
+        action: '/approvals',
+      });
+    }
+    if (rejected.length > 0) {
+      notifications.push({
+        type: 'approval_rejected', icon: '❌',
+        title: `你的${rejected.map((r: any) => typeLabels[r.type] || r.type).join('、')}申请被驳回`,
+        desc: '点击查看详情',
+        action: '/approvals',
+      });
+    }
+  }
+
   // 4. 新员工入职提醒（入职 7 天内）
   const sevenAgo = new Date(Date.now() - 7 * 86400000).toISOString().slice(0, 10);
   const { data: myProfile } = await supabaseAdmin.from('profiles').select('hire_date').eq('id', user.id).single();

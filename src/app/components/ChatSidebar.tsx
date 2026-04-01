@@ -16,8 +16,11 @@ interface Props {
 
 export default function ChatSidebar({ open, onClose, sessions, currentSessionId, onLoadSession, onDeleteSession, onNewChat, onHistoryAction }: Props) {
   const [mgmt, setMgmt] = useState(false);
+  const [search, setSearch] = useState('');
 
   if (!open) return null;
+
+  const filtered = search ? sessions.filter(s => s.title?.includes(search)) : sessions;
 
   return (<>
     <div className="fixed inset-0 z-40 flex">
@@ -30,12 +33,16 @@ export default function ChatSidebar({ open, onClose, sessions, currentSessionId,
             <button onClick={onNewChat} className="text-xs text-indigo-600 hover:text-indigo-700 px-2 py-1 rounded hover:bg-indigo-50 font-medium">+ 新对话</button>
           </div>
         </div>
+        <div className="px-3 py-2 border-b">
+          <input type="text" value={search} onChange={e => setSearch(e.target.value)} placeholder="搜索对话..."
+            className="w-full text-xs border border-gray-200 rounded-lg px-2.5 py-1.5 bg-gray-50 focus:outline-none focus:ring-2 focus:ring-indigo-500/30 placeholder:text-gray-400" />
+        </div>
         <div className="flex-1 overflow-y-auto">
-          {sessions.length === 0 ? (
-            <p className="text-center text-gray-400 text-sm py-10">暂无历史对话</p>
+          {filtered.length === 0 ? (
+            <p className="text-center text-gray-400 text-sm py-10">{search ? '无匹配结果' : '暂无历史对话'}</p>
           ) : (
             <div className="divide-y divide-gray-50">
-              {sessions.map(s => (
+              {filtered.map(s => (
                 <div key={s.id} className={`px-4 py-3 flex items-center justify-between hover:bg-gray-50 cursor-pointer group ${currentSessionId === s.id ? 'bg-indigo-50' : ''}`}>
                   <div className="min-w-0 flex-1" onClick={() => onLoadSession(s.id)}>
                     <p className="text-sm text-gray-800 truncate font-medium">{s.title}</p>

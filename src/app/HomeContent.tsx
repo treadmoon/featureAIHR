@@ -430,10 +430,13 @@ export default function HomeContent() {
                   approval: 'from-amber-50 to-orange-50 border-amber-200/80',
                   onboarding: 'from-emerald-50 to-teal-50 border-emerald-200/80',
                   attendance: 'from-sky-50 to-blue-50 border-sky-200/80',
+                  approval_approved: 'from-green-50 to-emerald-50 border-green-200/80',
+                  approval_rejected: 'from-red-50 to-rose-50 border-red-200/80',
                 };
                 const textColors: Record<string, string> = {
                   birthday: 'text-pink-800', contract: 'text-red-800', approval: 'text-amber-800',
                   onboarding: 'text-emerald-800', attendance: 'text-sky-800',
+                  approval_approved: 'text-green-800', approval_rejected: 'text-red-800',
                 };
                 return (
                   <div key={n.type} className={`bg-gradient-to-r ${colors[n.type] || colors.approval} border rounded-2xl p-3.5 shadow-sm`}>
