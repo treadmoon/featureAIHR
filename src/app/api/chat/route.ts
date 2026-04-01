@@ -384,19 +384,28 @@ ${role === 'admin' ? '你是系统管理员，可以搜索/修改任意员工信
         }),
 
         searchCompanyPolicies: tool({
-          description: '检索公司人事/IT/行政政策文档知识库',
-          inputSchema: z.object({ query: z.string() }),
+          description: '检索公司人事/IT/行政政策文档知识库。当用户询问公司制度、规章、政策、流程相关问题时调用此工具。',
+          inputSchema: z.object({ query: z.string().describe('用户问题的关键词，如"年假规定"、"报销流程"') }),
           execute: async ({ query }) => {
             if (!supabaseAdmin) return { error: 'Supabase 未连接' };
             const embedModelId = process.env.VOLCENGINE_EMBEDDING_MODEL_ID;
-            if (!embedModelId) return { error: '未配置 Embedding 模型' };
+            if (!embedModelId) {
+              // 无 embedding 模型时降级为关键词搜索
+              const { data } = await supabaseAdmin.from('knowledge_chunks').select('content, doc_id').textSearch('content', query.split(/\s+/).join(' & '), { type: 'plain' }).limit(3);
+              if (!data?.length) return { documents: [], message: '知识库中未找到相关内容' };
+              const docIds = [...new Set(data.map(d => d.doc_id))];
+              const { data: docs } = await supabaseAdmin.from('knowledge_docs').select('id, title').in('id', docIds);
+              const titleMap = Object.fromEntries((docs || []).map(d => [d.id, d.title]));
+              return { documents: data.map(d => ({ title: titleMap[d.doc_id] || '未知文档', excerpt: d.content })) };
+            }
             try {
               const { embedding } = await embed({ model: volcengine.textEmbeddingModel(embedModelId), value: query });
-              const { data, error } = await supabaseAdmin.rpc('match_policies', { query_embedding: embedding, match_threshold: 0.1, match_count: 2 });
+              const { data, error } = await supabaseAdmin.rpc('match_policies', { query_embedding: embedding, match_threshold: 0.1, match_count: 3 });
               if (error) throw error;
+              if (!data?.length) return { documents: [], message: '知识库中未找到相关内容' };
               return { documents: data.map((d: any) => ({ title: d.title, excerpt: d.content, similarity: d.similarity })) };
             } catch (e: any) {
-              return { error: '向量检索失败: ' + e.message };
+              return { error: '检索失败: ' + e.message };
             }
           },
         }),

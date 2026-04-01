@@ -402,6 +402,10 @@ export default function HomeContent() {
                     className="w-full flex items-center gap-2.5 px-3.5 py-2 text-sm text-slate-600 hover:bg-slate-50 transition-colors">
                     <span className="text-slate-400 text-[15px]">📊</span>{language === 'zh' ? '数据看板' : 'Dashboard'}
                   </button>
+                  <button onClick={() => { setMenuOpen(false); router.push('/admin/knowledge'); }}
+                    className="w-full flex items-center gap-2.5 px-3.5 py-2 text-sm text-slate-600 hover:bg-slate-50 transition-colors">
+                    <span className="text-slate-400 text-[15px]">📚</span>{language === 'zh' ? '知识库' : 'Knowledge'}
+                  </button>
                 </>)}
                 <button onClick={() => { setMenuOpen(false); setLanguage(language === 'zh' ? 'en' : 'zh'); }}
                   className="w-full flex items-center gap-2.5 px-3.5 py-2 text-sm text-slate-600 hover:bg-slate-50 transition-colors">
