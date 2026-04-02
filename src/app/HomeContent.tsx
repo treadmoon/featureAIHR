@@ -9,6 +9,7 @@ import { createClient } from '@/lib/supabase-browser';
 import { useSettings } from '../store/useSettings';
 import ToolCards from './components/tool-cards/ToolCards';
 import ChatSidebar from './components/ChatSidebar';
+import { track, trackPageView, trackError, trackApiSlow } from '@/lib/analytics';
 
 const DICT = {
   zh: {
@@ -112,6 +113,7 @@ export default function HomeContent() {
   useEffect(() => {
     fetch('/api/approvals?tab=pending').then(r => r.json()).then(d => { if (Array.isArray(d)) setPendingItems(d); }).catch(() => {});
     fetch('/api/notifications').then(r => r.json()).then(d => { if (Array.isArray(d)) setNotifications(d); }).catch(() => {});
+    trackPageView('home');
   }, []);
 
   useEffect(() => {
@@ -191,6 +193,7 @@ export default function HomeContent() {
   useEffect(() => {
     if (status === 'error') {
       console.error('[Chat error]', error);
+      trackError('chat_error', { message: error?.message });
     }
   }, [status, error]);
 
@@ -201,6 +204,7 @@ export default function HomeContent() {
     const prevUser = messages[messages.findIndex(m => m.id === msgId) - 1];
     setFeedbackSent(prev => new Set(prev).add(msgId));
     setFeedbackModal(null);
+    track('feedback', { rating, reason });
     fetch('/api/feedback', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -331,6 +335,7 @@ export default function HomeContent() {
   const handleSend = () => {
     if (!input.trim() || isLoading) return;
     if (status === 'error') clearError();
+    track('chat_send', { length: input.length });
     sendMessage({ role: 'user', parts: [{ type: 'text', text: input }] });
     setInput('');
     if (textareaRef.current) textareaRef.current.style.height = 'auto';
@@ -340,6 +345,7 @@ export default function HomeContent() {
     if (isLoading) return;
     if (status === 'error') clearError();
     trackUsage(text);
+    track('shortcut_use', { text: text.slice(0, 30) });
     sendMessage({ role: 'user', parts: [{ type: 'text', text }] });
   };
 

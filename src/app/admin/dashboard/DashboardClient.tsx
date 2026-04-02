@@ -1,12 +1,28 @@
 'use client';
 
+import { useState, useEffect } from 'react';
 import Link from 'next/link';
+import ReactMarkdown from 'react-markdown';
 
 type R = Record<string, any>;
 
 interface Props { profiles: R[]; attendance: R[]; approvals: R[]; feedback: R[]; month: string; }
 
 export default function DashboardClient({ profiles, attendance, approvals, feedback, month }: Props) {
+  const [analytics, setAnalytics] = useState<R | null>(null);
+  const [aiInsights, setAiInsights] = useState<string>('');
+  const [insightsLoading, setInsightsLoading] = useState(false);
+
+  useEffect(() => { fetch('/api/analytics?action=summary&days=7').then(r => r.json()).then(setAnalytics).catch(() => {}); }, []);
+
+  const loadInsights = async () => {
+    setInsightsLoading(true);
+    const res = await fetch('/api/analytics?action=ai-insights&days=7');
+    const data = await res.json();
+    setAiInsights(data.insights || '暂无洞察');
+    setInsightsLoading(false);
+  };
+
   const active = profiles.filter(p => p.is_active);
   const deptDist: R = {};
   active.forEach(p => { const d = p.department || '未分配'; deptDist[d] = (deptDist[d] || 0) + 1; });
@@ -95,6 +111,49 @@ export default function DashboardClient({ profiles, attendance, approvals, feedb
               <p className="text-xs text-gray-400 mb-2">差评原因分布</p>
               <div className="space-y-1.5">{Object.entries(reasonCount).sort((a: any, b: any) => b[1] - a[1]).map(([k, v]) => <Bar key={k} label={k} value={v as number} total={badFeedback.length} />)}</div>
             </div>
+          )}
+        </section>
+
+        {/* 埋点监控 */}
+        {analytics && (
+          <section>
+            <h2 className="text-sm font-semibold text-gray-700 mb-3">📡 系统监控（近 7 天）</h2>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+              <Card label="总事件" value={analytics.totalEvents || 0} color="indigo" />
+              <Card label="前端错误" value={analytics.errors?.total || 0} color="red" />
+              <Card label="慢接口(>3s)" value={analytics.slowApis?.total || 0} color="orange" />
+              <Card label="功能类型" value={analytics.features?.length || 0} color="sky" />
+            </div>
+            {analytics.features?.length > 0 && (
+              <div className="mt-3 bg-white rounded-xl border p-4">
+                <p className="text-xs text-gray-400 mb-2">功能使用排行</p>
+                <div className="space-y-1.5">{analytics.features.slice(0, 8).map(([k, v]: [string, number]) => <Bar key={k} label={k} value={v} total={analytics.features[0]?.[1] || 1} />)}</div>
+              </div>
+            )}
+            {analytics.errors?.top?.length > 0 && (
+              <div className="mt-3 bg-white rounded-xl border p-4">
+                <p className="text-xs text-gray-400 mb-2">Top 错误</p>
+                <div className="space-y-1.5">{analytics.errors.top.slice(0, 5).map(([k, v]: [string, number]) => <Bar key={k} label={k.slice(0, 30)} value={v} total={analytics.errors.top[0]?.[1] || 1} />)}</div>
+              </div>
+            )}
+          </section>
+        )}
+
+        {/* AI 智能洞察 */}
+        <section>
+          <div className="flex items-center justify-between mb-3">
+            <h2 className="text-sm font-semibold text-gray-700">🤖 AI 智能洞察</h2>
+            <button onClick={loadInsights} disabled={insightsLoading}
+              className="text-xs px-3 py-1.5 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:opacity-50">
+              {insightsLoading ? '分析中...' : '生成洞察'}
+            </button>
+          </div>
+          {aiInsights ? (
+            <div className="bg-white rounded-xl border p-4 prose prose-sm max-w-none text-gray-700">
+              <ReactMarkdown>{aiInsights}</ReactMarkdown>
+            </div>
+          ) : (
+            <p className="text-xs text-gray-400">点击"生成洞察"，AI 将分析近 7 天的埋点数据、错误日志和用户反馈，给出优化建议。</p>
           )}
         </section>
       </div>
