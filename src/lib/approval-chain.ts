@@ -1,6 +1,10 @@
 import { supabaseAdmin } from '@/lib/supabase';
 import { logDiag } from '@/lib/diagnosis-log';
 
+/**
+ * Build approval steps logic — returns step definitions without writing to DB.
+ * The actual atomic write is done by create_approval_request_atomic RPC.
+ */
 export async function buildSteps(type: string, applicantId: string, payload: Record<string, unknown>) {
   const admin = supabaseAdmin!;
   const { data: applicant } = await admin.from('profiles').select('department_id').eq('id', applicantId).single();
@@ -14,10 +18,13 @@ export async function buildSteps(type: string, applicantId: string, payload: Rec
     }
   }
 
-  const { data: hrDept } = await admin.from('departments').select('manager_id').eq('code', 'HR').maybeSingle();
-  const hrManagerId = hrDept?.manager_id || null;
-  const { data: finDept } = await admin.from('departments').select('manager_id').eq('code', 'FIN').maybeSingle();
-  const finManagerId = finDept?.manager_id || null;
+  // 并行查询 HR 和 Finance 部门经理
+  const [hrDept, finDept] = await Promise.all([
+    admin.from('departments').select('manager_id').eq('code', 'HR').maybeSingle(),
+    admin.from('departments').select('manager_id').eq('code', 'FIN').maybeSingle(),
+  ]);
+  const hrManagerId = hrDept?.data?.manager_id || null;
+  const finManagerId = finDept?.data?.manager_id || null;
 
   const steps: { step: number; approver_id: string }[] = [];
 
@@ -61,23 +68,37 @@ export async function buildSteps(type: string, applicantId: string, payload: Rec
   return steps;
 }
 
-/** Create an approval request with auto-generated chain. Returns { request } or { error }. */
-export async function createApprovalRequest(type: string, applicantId: string, payload: Record<string, unknown>): Promise<{ request?: any; error?: string }> {
-  const admin = supabaseAdmin!;
-  const steps = await buildSteps(type, applicantId, payload);
+/**
+ * Create an approval request atomically using RPC transaction.
+ * This ensures request + steps are written together or not at all.
+ */
+export async function createApprovalRequest(
+  type: string,
+  applicantId: string,
+  payload: Record<string, unknown>
+): Promise<{ request?: any; error?: string }> {
+  try {
+    const { data, error } = await (supabaseAdmin!)
+      .rpc('create_approval_request_atomic', {
+        p_type: type,
+        p_applicant_id: applicantId,
+        p_payload: payload,
+      });
 
-  const { data: request, error } = await admin.from('approval_requests').insert({
-    type, applicant_id: applicantId, status: 'pending',
-    current_step: 1, total_steps: steps.length,
-    payload,
-  }).select().single();
+    if (error) {
+      logDiag({ level: 'error', source: 'approval:create', message: error.message, context: { type, payload }, userId: applicantId });
+      return { error: error.message };
+    }
 
-  if (error) { logDiag({ level: 'error', source: 'approval:create', message: error.message, context: { type, payload }, userId: applicantId }); return { error: error.message }; }
-  if (!request) return { error: '创建失败' };
+    // Validate UUID response
+    if (typeof data !== 'string' || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(data)) {
+      logDiag({ level: 'error', source: 'approval:create', message: `Invalid RPC response: ${JSON.stringify(data)}`, context: { type, payload }, userId: applicantId });
+      return { error: '创建申请失败，请重试' };
+    }
 
-  for (const s of steps) {
-    await admin.from('approval_steps').insert({ request_id: request.id, ...s });
+    return { request: { id: data } };
+  } catch (err: any) {
+    logDiag({ level: 'error', source: 'approval:create', message: err.message, context: { type, payload }, userId: applicantId });
+    return { error: err.message };
   }
-
-  return { request };
 }

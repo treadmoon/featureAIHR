@@ -10,9 +10,8 @@ export async function GET() {
   const { data: profile } = await supabase.from('profiles').select('role, name, department, hire_date').eq('id', user.id).single();
   const role = profile?.role || 'employee';
 
-  // 判断是否经理
-  const { data: managed } = await supabaseAdmin.from('departments').select('id').eq('manager_id', user.id).limit(1);
-  const isManager = (managed && managed.length > 0) || role === 'admin';
+  // admin/hr/manager 都能看团队类通知
+  const isManager = role === 'admin' || role === 'hr' || role === 'manager';
 
   const notifications: { type: string; icon: string; title: string; desc: string; action?: string }[] = [];
   const today = new Date();

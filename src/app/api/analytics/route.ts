@@ -1,6 +1,7 @@
 import { createClient } from '@/lib/supabase-server';
 import { supabaseAdmin } from '@/lib/supabase';
 import { NextRequest } from 'next/server';
+import { requireAdmin } from '@/lib/auth-permissions';
 
 // POST: 批量写入埋点事件
 export async function POST(req: NextRequest) {
@@ -35,8 +36,11 @@ export async function GET(req: NextRequest) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return new Response('未登录', { status: 401 });
-  const { data: profile } = await supabase.from('profiles').select('role').eq('id', user.id).single();
-  if (profile?.role !== 'admin') return new Response('无权限', { status: 403 });
+  try {
+    await requireAdmin(supabase, user.id);
+  } catch (e: any) {
+    return new Response(e.message || '无权限', { status: e.status || 403 });
+  }
   if (!supabaseAdmin) return Response.json({});
 
   const { searchParams } = new URL(req.url);

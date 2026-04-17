@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase-server';
 import { createClient as createAdminClient } from '@supabase/supabase-js';
+import { requireAdmin } from '@/lib/auth-permissions';
 
 const TABLES = ['employee_transfers', 'performance', 'attendance', 'tickets', 'expenses', 'employee_positions'] as const;
 type TableName = typeof TABLES[number];
@@ -9,17 +10,16 @@ function sb() {
   return createAdminClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!);
 }
 
-async function requireAdmin() {
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return null;
-  const { data } = await supabase.from('profiles').select('role').eq('id', user.id).single();
-  return data?.role === 'admin' ? user : null;
-}
-
 // POST — Create record
 export async function POST(req: NextRequest) {
-  if (!await requireAdmin()) return NextResponse.json({ error: '无权限' }, { status: 403 });
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return NextResponse.json({ error: '未登录' }, { status: 401 });
+  try {
+    await requireAdmin(supabase, user.id);
+  } catch (e: any) {
+    return NextResponse.json({ error: e.message || '无权限' }, { status: e.status || 403 });
+  }
   const { table, ...fields } = await req.json();
   if (!TABLES.includes(table)) return NextResponse.json({ error: '无效表名' }, { status: 400 });
 
@@ -30,7 +30,14 @@ export async function POST(req: NextRequest) {
 
 // PATCH — Update record
 export async function PATCH(req: NextRequest) {
-  if (!await requireAdmin()) return NextResponse.json({ error: '无权限' }, { status: 403 });
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return NextResponse.json({ error: '未登录' }, { status: 401 });
+  try {
+    await requireAdmin(supabase, user.id);
+  } catch (e: any) {
+    return NextResponse.json({ error: e.message || '无权限' }, { status: e.status || 403 });
+  }
   const { table, id, ...fields } = await req.json();
   if (!TABLES.includes(table)) return NextResponse.json({ error: '无效表名' }, { status: 400 });
 
@@ -41,7 +48,14 @@ export async function PATCH(req: NextRequest) {
 
 // DELETE — Delete record
 export async function DELETE(req: NextRequest) {
-  if (!await requireAdmin()) return NextResponse.json({ error: '无权限' }, { status: 403 });
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return NextResponse.json({ error: '未登录' }, { status: 401 });
+  try {
+    await requireAdmin(supabase, user.id);
+  } catch (e: any) {
+    return NextResponse.json({ error: e.message || '无权限' }, { status: e.status || 403 });
+  }
   const { table, id } = await req.json();
   if (!TABLES.includes(table)) return NextResponse.json({ error: '无效表名' }, { status: 400 });
 

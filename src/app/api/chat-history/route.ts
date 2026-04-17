@@ -72,26 +72,40 @@ export async function POST(req: NextRequest) {
     return Response.json({ ok: true });
   }
 
-  // 压缩：保留每个会话的首尾各2条消息，删除中间的
+  // 压缩：保留每个会话的首尾各2条消息，删除中间的（全部并行化）
   if (body.action === 'compress' && body.before) {
     const { data: sessions } = await supabase
       .from('chat_sessions')
       .select('id')
       .eq('user_id', user.id)
       .lt('created_at', body.before);
-    for (const s of sessions || []) {
-      const { data: msgs } = await supabase
+
+    if (!sessions || sessions.length === 0) return Response.json({ ok: true });
+
+    // 并行查询所有会话的消息
+    const allMsgs = await Promise.all(
+      sessions.map(s => supabase
         .from('chat_messages')
-        .select('id')
+        .select('id, session_id')
         .eq('session_id', s.id)
-        .order('created_at');
-      if (msgs && msgs.length > 4) {
+        .order('created_at')
+        .then(r => ({ sessionId: s.id, msgs: r.data || [] }))
+      )
+    );
+
+    // 构建所有删除操作（并行）
+    const deleteOps = allMsgs
+      .filter(({ msgs }) => msgs.length > 4)
+      .flatMap(({ msgs, sessionId }) => {
         const keepIds = [msgs[0].id, msgs[1].id, msgs[msgs.length - 2].id, msgs[msgs.length - 1].id];
         const deleteIds = msgs.filter(m => !keepIds.includes(m.id)).map(m => m.id);
-        await supabase.from('chat_messages').delete().in('id', deleteIds);
-        await supabase.from('chat_sessions').update({ message_count: 4 }).eq('id', s.id);
-      }
-    }
+        return [
+          supabase.from('chat_messages').delete().in('id', deleteIds),
+          supabase.from('chat_sessions').update({ message_count: 4 }).eq('id', sessionId),
+        ];
+      });
+
+    if (deleteOps.length > 0) await Promise.all(deleteOps);
     return Response.json({ ok: true });
   }
 

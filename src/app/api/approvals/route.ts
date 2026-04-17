@@ -123,7 +123,7 @@ export async function POST(req: NextRequest) {
   return NextResponse.json(request);
 }
 
-// PATCH — 审批操作 or 撤回
+// PATCH — 审批操作 or 撤回（使用 RPC 保证原子性）
 export async function PATCH(req: NextRequest) {
   const auth = await getAuth();
   if (!auth) return NextResponse.json({ error: '未登录' }, { status: 401 });
@@ -132,42 +132,33 @@ export async function PATCH(req: NextRequest) {
   if (!['approve', 'reject', 'cancel'].includes(action)) return NextResponse.json({ error: '无效操作' }, { status: 400 });
 
   const admin = sb();
-  const { data: request } = await admin.from('approval_requests').select('*').eq('id', request_id).single();
-  if (!request || request.status !== 'pending') return NextResponse.json({ error: '申请单状态异常' }, { status: 400 });
 
-  // 撤回：仅申请人本人
+  // 撤回
   if (action === 'cancel') {
-    if (request.applicant_id !== auth.userId) return NextResponse.json({ error: '只有申请人可以撤回' }, { status: 403 });
-    await admin.from('approval_requests').update({ status: 'cancelled', completed_at: new Date().toISOString() }).eq('id', request_id);
-    await admin.from('approval_steps').update({ status: 'skipped' }).eq('request_id', request_id).eq('status', 'pending');
+    const { data, error } = await admin.rpc('cancel_request_atomic', {
+      p_request_id: request_id,
+      p_user_id: auth.userId,
+    });
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    if (data?.error) return NextResponse.json({ error: data.error }, { status: 400 });
     return NextResponse.json({ ok: true });
   }
 
-  // 审批：必须是当前步骤的审批人
-  const { data: step } = await admin.from('approval_steps')
-    .select('*').eq('request_id', request_id).eq('step', request.current_step).eq('approver_id', auth.userId).eq('status', 'pending').single();
-  if (!step) return NextResponse.json({ error: '你不是当前审批人' }, { status: 403 });
+  // 审批（approve/reject）
+  const { data, error } = await admin.rpc('approve_step_atomic', {
+    p_request_id: request_id,
+    p_approver_id: auth.userId,
+    p_action: action,
+    p_comment: comment || '',
+  });
 
-  await admin.from('approval_steps').update({
-    status: action === 'approve' ? 'approved' : 'rejected',
-    comment: comment || '', acted_at: new Date().toISOString(),
-  }).eq('id', step.id);
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  if (data?.error) return NextResponse.json({ error: data.error }, { status: 400 });
 
-  if (action === 'reject') {
-    await admin.from('approval_requests').update({
-      status: 'rejected', result_note: comment || '', completed_at: new Date().toISOString(),
-    }).eq('id', request_id);
-    await admin.from('approval_steps').update({ status: 'skipped' })
-      .eq('request_id', request_id).gt('step', request.current_step).eq('status', 'pending');
-  } else {
-    if (request.current_step < request.total_steps) {
-      await admin.from('approval_requests').update({ current_step: request.current_step + 1 }).eq('id', request_id);
-    } else {
-      await admin.from('approval_requests').update({
-        status: 'approved', completed_at: new Date().toISOString(),
-      }).eq('id', request_id);
-      await onApproved(admin, request);
-    }
+  // 审批完成后处理（如调岗、离职等）—— onApproved 需在 RPC 之后执行，因为它修改业务数据
+  if (data?.ok && action === 'approve') {
+    const { data: request } = await admin.from('approval_requests').select('*').eq('id', request_id).single();
+    if (request) await onApproved(admin, request);
   }
 
   return NextResponse.json({ ok: true });

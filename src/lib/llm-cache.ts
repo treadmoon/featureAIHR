@@ -34,10 +34,10 @@ export function getCache(key: string): CacheEntry | null {
 }
 
 export function setCache(key: string, response: string, toolResults: any[] = []) {
-  // LRU：超过上限删最旧的
+  // LRU：超过上限删最旧的（Map 保持插入顺序，第一个即最旧）
   if (cache.size >= MAX_SIZE) {
-    const oldest = [...cache.entries()].sort((a, b) => a[1].createdAt - b[1].createdAt)[0];
-    if (oldest) cache.delete(oldest[0]);
+    const firstKey = cache.keys().next().value;
+    if (firstKey) cache.delete(firstKey);
   }
   cache.set(key, { response, toolResults, createdAt: Date.now(), hits: 0 });
 }

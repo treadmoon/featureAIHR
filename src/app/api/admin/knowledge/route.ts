@@ -4,6 +4,8 @@ import { createOpenAI } from '@ai-sdk/openai';
 import { embed } from 'ai';
 import { NextRequest } from 'next/server';
 import { rateLimit } from '@/lib/rate-limit';
+import { requireAdmin } from '@/lib/auth-permissions';
+import { z } from 'zod';
 
 const volcengine = createOpenAI({
   apiKey: process.env.VOLCENGINE_API_KEY || '',
@@ -13,70 +15,127 @@ const volcengine = createOpenAI({
 const MAX_TITLE_LEN = 100;
 const MAX_CONTENT_LEN = 50000;
 const MAX_CHUNKS = 50;
+const CHUNK_SIZE = 400;       // 每片目标字数
+const CHUNK_OVERLAP = 80;     // 跨段落 overlap
 
-// 检测文档内容是否包含 prompt 注入指令
+// ── Zod Schema ──
+const CreateDocSchema = z.object({
+  action: z.literal('create'),
+  title: z.string().min(1).max(MAX_TITLE_LEN),
+  content: z.string().min(1).max(MAX_CONTENT_LEN),
+  categoryId: z.string().uuid().nullable().optional(),
+});
+
+const UpdateDocSchema = z.object({
+  action: z.literal('update'),
+  id: z.string().uuid(),
+  title: z.string().min(1).max(MAX_TITLE_LEN),
+  content: z.string().min(1).max(MAX_CONTENT_LEN),
+  categoryId: z.string().uuid().nullable().optional(),
+});
+
+const DeleteDocSchema = z.object({
+  action: z.literal('delete'),
+  id: z.string().uuid(),
+});
+
+const ArchiveDocSchema = z.object({
+  action: z.literal('archive'),
+  id: z.string().uuid(),
+});
+
+const ActionSchema = z.discriminatedUnion('action', [
+  CreateDocSchema,
+  UpdateDocSchema,
+  DeleteDocSchema,
+  ArchiveDocSchema,
+]);
+
+// ── Prompt 注入检测（强化版）──
 const CONTENT_INJECTION_PATTERNS = [
-  /忽略.{0,10}(之前|所有|全部).{0,10}(指令|规则)/,
-  /ignore.{0,15}(previous|all).{0,15}instructions?/i,
-  /you are now/i, /你现在是/,
-  /system\s*prompt/i,
+  // 中文系列
+  /忽略.{0,10}(之前|以上|所有|全部|原先).{0,10}(指令|规则|约束|限制|保密)/i,
+  /你(现在)?是.{0,10}(个)?(AI|助手|人|机器|系统)/i,
+  /无视.{0,10}(以上|之前|所有|先前|现行).{0,10}(规则|指令|约束)/i,
+  /暂时.{0,10}(关闭|跳过|绕过|失效).{0,10}(安全|检查|验证|过滤)/i,
+  // 英文系列
+  /ignore.{0,20}(all\s+)?(previous|prior|above|prior)\s+(instructions?|rules?|prompts?|constraints?)/i,
+  /dis(regard|able|connect).{0,20}(safety|security|filter|validation)/i,
+  /you are now(?:\s+a)?(?:\s+new)?(?:\s+role)?/i,
+  /DAN\b/i, /do\s+anything\s+now/i,
+  /new\s+system\s+prompt/i,
+  /forget\s+(all\s+)?previous\s+(instructions?|rules?)/i,
+  /bypass.{0,20}(security|restriction|filter|validation)/i,
+  /\{[^{}]*(?:ignore|bypass|override)[^{}]*\}/i,
 ];
 
 function hasContentInjection(text: string): boolean {
   return CONTENT_INJECTION_PATTERNS.some(p => p.test(text));
 }
 
-async function requireAdmin() {
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return null;
-  const { data } = await supabase.from('profiles').select('role').eq('id', user.id).single();
-  return data?.role === 'admin' ? user : null;
-}
-
-// 文本切片：按段落切，每片 ~500 字
-function chunkText(text: string, maxLen = 500): string[] {
+// ── 智能文本切片（带 overlap）──
+function chunkText(text: string, maxLen = CHUNK_SIZE, overlap = CHUNK_OVERLAP): string[] {
+  // 先按段落拆分
   const paragraphs = text.split(/\n{2,}/);
   const chunks: string[] = [];
   let buf = '';
+
   for (const p of paragraphs) {
-    if (buf.length + p.length > maxLen && buf) {
+    if (buf.length + p.length > maxLen && buf.length > 0) {
       chunks.push(buf.trim());
-      buf = '';
+      // 保留 overlap（从上一个 chunk 尾部截取）
+      buf = buf.slice(-overlap) + p + '\n\n';
+    } else {
+      buf += p + '\n\n';
     }
-    buf += p + '\n\n';
   }
   if (buf.trim()) chunks.push(buf.trim());
-  return chunks.length ? chunks : [text.slice(0, maxLen)];
+
+  // 保证至少有一片，且不超过上限
+  return chunks.length > 0 ? chunks.slice(0, MAX_CHUNKS) : [text.slice(0, maxLen)];
 }
 
-// 向量化切片并写入
-async function embedChunks(docId: string, chunks: string[]) {
+// ── 批量向量化（事务保证）──
+async function embedChunksAtomic(docId: string, chunks: string[]) {
   const embedModelId = process.env.VOLCENGINE_EMBEDDING_MODEL_ID;
-  if (!embedModelId || !supabaseAdmin) return;
 
-  // 删除旧切片
-  await supabaseAdmin.from('knowledge_chunks').delete().eq('doc_id', docId);
+  // 1. 删除旧切片（FK cascade 会清理 chunks）
+  await supabaseAdmin!.from('knowledge_chunks').delete().eq('doc_id', docId);
 
-  for (let i = 0; i < chunks.length; i++) {
-    try {
-      const { embedding } = await embed({ model: volcengine.textEmbeddingModel(embedModelId), value: chunks[i] });
-      await supabaseAdmin.from('knowledge_chunks').insert({
-        doc_id: docId, chunk_index: i, content: chunks[i], embedding,
-      });
-    } catch (e) {
-      // embedding 失败时仍保存文本，不存向量
-      await supabaseAdmin.from('knowledge_chunks').insert({
-        doc_id: docId, chunk_index: i, content: chunks[i],
-      });
-    }
+  // 2. 批量准备 chunks 数据
+  const chunkRows: Array<{ doc_id: string; chunk_index: number; content: string; embedding?: number[] }> = [];
+
+  // 3. 如果有 embedding 模型，批量生成向量
+  if (embedModelId) {
+    const embeddings = await Promise.all(
+      chunks.map(c => embed({ model: volcengine.textEmbeddingModel(embedModelId), value: c }))
+    );
+    embeddings.forEach((em, i) => {
+      chunkRows.push({ doc_id: docId, chunk_index: i, content: chunks[i], embedding: em.embedding });
+    });
+  } else {
+    chunks.forEach((content, i) => {
+      chunkRows.push({ doc_id: docId, chunk_index: i, content });
+    });
   }
+
+  // 4. 批量写入（一次 RTT）
+  const { error } = await supabaseAdmin!.from('knowledge_chunks').insert(chunkRows);
+  if (error) throw new Error(`chunk insert failed: ${error.message}`);
+
+  return chunkRows.length;
 }
 
-// GET: 列表
+// ── GET: 列表（支持分页）──
 export async function GET(req: NextRequest) {
-  const admin = await requireAdmin();
-  if (!admin) return new Response('无权限', { status: 403 });
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return new Response('未登录', { status: 401 });
+  try {
+    await requireAdmin(supabase, user.id);
+  } catch (e: any) {
+    return new Response(e.message || '无权限', { status: 403 });
+  }
 
   const { searchParams } = new URL(req.url);
   const action = searchParams.get('action');
@@ -86,72 +145,139 @@ export async function GET(req: NextRequest) {
     return Response.json(data || []);
   }
 
-  if (action === 'versions' && searchParams.get('docId')) {
-    const { data } = await supabaseAdmin!.from('knowledge_versions').select('version, updated_by, created_at').eq('doc_id', searchParams.get('docId')!).order('version', { ascending: false });
+  if (action === 'versions') {
+    const docId = searchParams.get('docId');
+    if (!docId) return Response.json({ error: '缺少 docId' }, { status: 400 });
+    const { data } = await supabaseAdmin!.from('knowledge_versions')
+      .select('version, updated_by, created_at')
+      .eq('doc_id', docId!)
+      .order('version', { ascending: false });
     return Response.json(data || []);
   }
 
-  // 默认：文档列表
+  // 默认：文档列表（分页）
   const categoryId = searchParams.get('categoryId');
-  let query = supabaseAdmin!.from('knowledge_docs').select('id, title, category_id, version, status, updated_at, content');
+  const page = Math.max(1, parseInt(searchParams.get('page') || '1'));
+  const pageSize = 20;
+  const offset = (page - 1) * pageSize;
+
+  let query = supabaseAdmin!.from('knowledge_docs')
+    .select('id, title, category_id, version, status, updated_at', { count: 'exact' })
+    .eq('status', 'active');
+
   if (categoryId) query = query.eq('category_id', categoryId);
-  const { data } = await query.order('updated_at', { ascending: false });
-  return Response.json(data || []);
+
+  const { data, error, count } = await query
+    .order('updated_at', { ascending: false })
+    .range(offset, offset + pageSize - 1);
+
+  if (error) return Response.json({ error: error.message }, { status: 500 });
+
+  return Response.json({
+    docs: data || [],
+    pagination: {
+      page,
+      pageSize,
+      total: count || 0,
+      totalPages: Math.ceil((count || 0) / pageSize),
+    },
+  });
 }
 
-// POST: 创建/更新/删除
+// ── POST: 创建/更新/删除/归档 ──
 export async function POST(req: NextRequest) {
-  const admin = await requireAdmin();
-  if (!admin) return new Response('无权限', { status: 403 });
-
-  const { ok } = rateLimit(`knowledge:${admin.id}`, 10, 60000);
-  if (!ok) return Response.json({ error: '操作过于频繁，请稍后再试' }, { status: 429 });
-
-  const body = await req.json();
-
-  // 创建文档
-  if (body.action === 'create') {
-    const title = String(body.title || '').trim().slice(0, MAX_TITLE_LEN);
-    const content = String(body.content || '').trim().slice(0, MAX_CONTENT_LEN);
-    if (!title || !content) return Response.json({ error: '标题和内容不能为空' }, { status: 400 });
-    if (hasContentInjection(content)) return Response.json({ error: '文档内容包含可疑指令文本，请检查后重新提交' }, { status: 400 });
-    const { data: doc } = await supabaseAdmin!.from('knowledge_docs').insert({
-      title, content, category_id: body.categoryId || null, updated_by: admin.id,
-    }).select('id').single();
-    if (doc) {
-      const chunks = chunkText(content).slice(0, MAX_CHUNKS);
-      await embedChunks(doc.id, chunks);
-      await supabaseAdmin!.from('knowledge_versions').insert({ doc_id: doc.id, version: 1, content, updated_by: admin.id });
-    }
-    return Response.json(doc || { error: '创建失败' });
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return new Response('未登录', { status: 401 });
+  let adminId: string;
+  try {
+    adminId = await requireAdmin(supabase, user.id);
+  } catch (e: any) {
+    return new Response(e.message || '无权限', { status: 403 });
   }
 
-  // 更新文档
-  if (body.action === 'update' && body.id) {
-    const title = String(body.title || '').trim().slice(0, MAX_TITLE_LEN);
-    const content = String(body.content || '').trim().slice(0, MAX_CONTENT_LEN);
-    if (!title || !content) return Response.json({ error: '标题和内容不能为空' }, { status: 400 });
-    if (hasContentInjection(content)) return Response.json({ error: '文档内容包含可疑指令文本，请检查后重新提交' }, { status: 400 });
-    const { data: old } = await supabaseAdmin!.from('knowledge_docs').select('version').eq('id', body.id).single();
+  const { ok } = rateLimit(`knowledge:${user.id}`, 10, 60000);
+  if (!ok) return Response.json({ error: '操作过于频繁，请稍后再试' }, { status: 429 });
+
+  let body: unknown;
+  try {
+    body = await req.json();
+  } catch {
+    return Response.json({ error: '无效 JSON' }, { status: 400 });
+  }
+
+  // Zod 校验
+  const parsed = ActionSchema.safeParse(body);
+  if (!parsed.success) {
+    return Response.json({ error: `参数错误: ${parsed.error.message}` }, { status: 400 });
+  }
+
+  const data = parsed.data;
+
+  // 创建
+  if (data.action === 'create') {
+    if (hasContentInjection(data.content)) {
+      return Response.json({ error: '文档内容包含可疑指令文本' }, { status: 400 });
+    }
+    const { data: doc, error: docErr } = await supabaseAdmin!.from('knowledge_docs').insert({
+      title: data.title,
+      content: data.content,
+      category_id: data.categoryId || null,
+      updated_by: adminId,
+    }).select('id').single();
+
+    if (docErr) return Response.json({ error: docErr.message }, { status: 500 });
+    if (doc) {
+      const chunks = chunkText(data.content);
+      const chunkCount = await embedChunksAtomic(doc.id, chunks);
+      await supabaseAdmin!.from('knowledge_versions').insert({
+        doc_id: doc.id, version: 1, content: data.content, updated_by: adminId,
+      });
+      return Response.json({ id: doc.id, chunkCount });
+    }
+    return Response.json({ error: '创建失败' }, { status: 500 });
+  }
+
+  // 更新
+  if (data.action === 'update') {
+    if (hasContentInjection(data.content)) {
+      return Response.json({ error: '文档内容包含可疑指令文本' }, { status: 400 });
+    }
+    const { data: old } = await supabaseAdmin!.from('knowledge_docs').select('version').eq('id', data.id).single();
     const newVersion = (old?.version || 0) + 1;
-    await supabaseAdmin!.from('knowledge_docs').update({
-      title, content, category_id: body.categoryId, version: newVersion, updated_by: admin.id,
-    }).eq('id', body.id);
-    const chunks = chunkText(content).slice(0, MAX_CHUNKS);
-    await embedChunks(body.id, chunks);
-    await supabaseAdmin!.from('knowledge_versions').insert({ doc_id: body.id, version: newVersion, content, updated_by: admin.id });
+
+    const { error: updateErr } = await supabaseAdmin!.from('knowledge_docs').update({
+      title: data.title,
+      content: data.content,
+      category_id: data.categoryId,
+      version: newVersion,
+      updated_by: adminId,
+    }).eq('id', data.id);
+
+    if (updateErr) return Response.json({ error: updateErr.message }, { status: 500 });
+
+    // 重新向量化（原子操作）
+    const chunks = chunkText(data.content);
+    await embedChunksAtomic(data.id, chunks);
+
+    await supabaseAdmin!.from('knowledge_versions').insert({
+      doc_id: data.id, version: newVersion, content: data.content, updated_by: adminId,
+    });
+
     return Response.json({ ok: true, version: newVersion });
   }
 
-  // 删除文档
-  if (body.action === 'delete' && body.id) {
-    await supabaseAdmin!.from('knowledge_docs').delete().eq('id', body.id);
+  // 删除（cascade 会清理 chunks 和 versions）
+  if (data.action === 'delete') {
+    const { error: delErr } = await supabaseAdmin!.from('knowledge_docs').delete().eq('id', data.id);
+    if (delErr) return Response.json({ error: delErr.message }, { status: 500 });
     return Response.json({ ok: true });
   }
 
   // 归档
-  if (body.action === 'archive' && body.id) {
-    await supabaseAdmin!.from('knowledge_docs').update({ status: 'archived' }).eq('id', body.id);
+  if (data.action === 'archive') {
+    const { error: archiveErr } = await supabaseAdmin!.from('knowledge_docs').update({ status: 'archived' }).eq('id', data.id);
+    if (archiveErr) return Response.json({ error: archiveErr.message }, { status: 500 });
     return Response.json({ ok: true });
   }
 

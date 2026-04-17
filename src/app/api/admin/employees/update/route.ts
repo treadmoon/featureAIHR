@@ -1,14 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase-server';
 import { createClient as createAdminClient } from '@supabase/supabase-js';
+import { requireAdmin } from '@/lib/auth-permissions';
 
 export async function PATCH(req: NextRequest) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ error: '未登录' }, { status: 401 });
-
-  const { data: profile } = await supabase.from('profiles').select('role').eq('id', user.id).single();
-  if (profile?.role !== 'admin') return NextResponse.json({ error: '无权限' }, { status: 403 });
+  try {
+    await requireAdmin(supabase, user.id);
+  } catch (e: any) {
+    return NextResponse.json({ error: e.message || '无权限' }, { status: e.status || 403 });
+  }
 
   const { id, ...fields } = await req.json();
   if (!id) return NextResponse.json({ error: '缺少 id' }, { status: 400 });

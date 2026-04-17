@@ -1,20 +1,18 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase-server';
 import { supabaseAdmin as globalAdmin } from '@/lib/supabase';
-
-// Admin guard helper
-async function requireAdmin() {
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return null;
-  const { data: profile } = await supabase.from('profiles').select('role').eq('id', user.id).single();
-  return profile?.role === 'admin' ? user : null;
-}
+import { requireAdmin } from '@/lib/auth-permissions';
 
 // POST — Create new employee (uses service role to create auth user)
 export async function POST(req: NextRequest) {
-  const admin = await requireAdmin();
-  if (!admin) return NextResponse.json({ error: '无权限' }, { status: 403 });
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return NextResponse.json({ error: '未登录' }, { status: 401 });
+  try {
+    await requireAdmin(supabase, user.id);
+  } catch (e: any) {
+    return NextResponse.json({ error: e.message || '无权限' }, { status: e.status || 403 });
+  }
 
   const { name, email, password, role, department, job_title, phone } = await req.json();
   if (!email || !password || !name) {
@@ -49,8 +47,14 @@ export async function POST(req: NextRequest) {
 
 // PATCH — Toggle employee active status
 export async function PATCH(req: NextRequest) {
-  const admin = await requireAdmin();
-  if (!admin) return NextResponse.json({ error: '无权限' }, { status: 403 });
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return NextResponse.json({ error: '未登录' }, { status: 401 });
+  try {
+    await requireAdmin(supabase, user.id);
+  } catch (e: any) {
+    return NextResponse.json({ error: e.message || '无权限' }, { status: e.status || 403 });
+  }
 
   const { id, is_active } = await req.json();
 

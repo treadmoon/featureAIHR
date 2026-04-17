@@ -16,7 +16,8 @@ export async function logDiag(entry: DiagEntry) {
   if (mem.length > 200) mem.shift();
   console.warn(`[DIAG][${entry.level}][${entry.source}] ${entry.message}`);
   if (supabaseAdmin) {
-    await supabaseAdmin.from('diagnosis_logs').insert({
+    //  fire-and-forget：不等 DB 写入完成，避免日志记录阻塞主流程
+    supabaseAdmin.from('diagnosis_logs').insert({
       level: entry.level, source: entry.source,
       message: entry.message, context: entry.context ?? {},
       user_id: entry.userId ?? null,

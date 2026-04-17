@@ -35,7 +35,7 @@ create index if not exists idx_docs_status on knowledge_docs(status);
 
 alter table knowledge_docs enable row level security;
 create policy "admin_docs" on knowledge_docs for all using (public.is_admin());
-create policy "read_active_docs" on knowledge_docs for select using (status = 'active');
+create policy "manager_docs_read" on knowledge_docs for select using (status = 'active' and (public.is_admin() or public.is_hr() or public.is_manager()));
 
 drop trigger if exists knowledge_docs_updated_at on knowledge_docs;
 create trigger knowledge_docs_updated_at
