@@ -119,7 +119,8 @@ export default function ChatProvider({ children }: { children: React.ReactNode }
   }, [isSuspended]);
 
   const handleSendMessage = useCallback((text: string) => {
-    sendMessage(text);
+    // @ts-expect-error - AI SDK sendMessage accepts { text: string } object
+    sendMessage({ text });
   }, [sendMessage]);
 
   const handleClearMessages = useCallback(() => {
