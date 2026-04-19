@@ -6,7 +6,7 @@
 -- 1. 建表
 create table if not exists public.approval_requests (
   id uuid primary key default gen_random_uuid(),
-  type text not null check (type in ('leave','expense','overtime','attendance_fix','transfer','salary_adjust','resignation','onboard')),
+  type text not null check (type in ('leave','expense','overtime','attendance_fix','transfer','salary_adjust','resignation','onboard','promotion','recruitment','other')),
   applicant_id uuid not null references public.profiles(id) on delete cascade,
   status text not null default 'pending' check (status in ('draft','pending','approved','rejected','cancelled')),
   current_step integer not null default 1,
