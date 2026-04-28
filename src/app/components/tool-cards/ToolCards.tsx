@@ -9,6 +9,7 @@ interface ToolCardsProps {
   setConfirmedDrafts: (fn: (prev: Set<string>) => Set<string>) => void;
   isLoading: boolean;
   quickSend: (text: string) => void;
+  onApprovalClick?: (id: string, title: string, status: string) => void;
 }
 
 // Dark theme color helpers
@@ -49,7 +50,7 @@ function Badge({ children, colorClass }: { children: React.ReactNode; colorClass
   );
 }
 
-export default function ToolCards({ message, confirmedDrafts, setConfirmedDrafts, isLoading, quickSend }: ToolCardsProps) {
+export default function ToolCards({ message, confirmedDrafts, setConfirmedDrafts, isLoading, quickSend, onApprovalClick }: ToolCardsProps) {
   const router = useRouter();
 
   return message.parts?.filter((p: any) => typeof p.type === 'string' && p.type.startsWith('tool-') && p.type !== 'tool-invocation').map((part: any, index: number) => {
@@ -347,7 +348,13 @@ export default function ToolCards({ message, confirmedDrafts, setConfirmedDrafts
           </div>
           {ticket?.id && (
             <button
-              onClick={() => router.push(`/approvals/${ticket.id}`)}
+              onClick={() => {
+                if (toolName === 'submitWorkflowApplication' && onApprovalClick) {
+                  onApprovalClick(ticket.id, ticket.title || '审批详情', ticket.status || '审批中');
+                } else {
+                  router.push(`/approvals/${ticket.id}`);
+                }
+              }}
               style={{ width: '100%', marginTop: '12px', padding: '8px', fontSize: '12px', fontWeight: '500', background: 'rgba(0,0,0,0.03)', border: '1px solid rgba(0,0,0,0.07)', borderRadius: '8px', color: '#6b7280', cursor: 'pointer' }}
             >
               查看审批详情 →
