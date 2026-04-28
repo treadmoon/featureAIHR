@@ -81,6 +81,35 @@ body {
   min-height: 100dvh;
 }
 
+.ai-bg {
+  background:
+    radial-gradient(1200px 500px at 50% -120px, rgba(94,106,210,0.14), transparent 65%),
+    radial-gradient(900px 400px at 80% 120%, rgba(125,211,252,0.1), transparent 70%),
+    #ffffff;
+}
+
+.ai-glass {
+  background: rgba(247,247,248,0.78);
+  backdrop-filter: blur(10px);
+}
+
+.ai-chip {
+  background: rgba(255,255,255,0.65);
+  border: 1px solid rgba(94,106,210,0.16);
+  box-shadow: 0 8px 24px rgba(17,24,39,0.04);
+}
+
+.ai-orb {
+  background: radial-gradient(circle at 30% 30%, #818cf8, #5e6ad2 65%);
+  box-shadow: 0 10px 36px rgba(94,106,210,0.35), inset 0 1px 0 rgba(255,255,255,0.25);
+}
+
+.ai-badge {
+  border-color: rgba(94,106,210,0.22);
+  background: rgba(94,106,210,0.08);
+  color: #5e6ad2;
+}
+
 /* ============================================================
    Typography Scale — Linear weight system
    ============================================================ */
@@ -234,10 +263,15 @@ body {
 @keyframes spin {
   to { transform: rotate(360deg); }
 }
+@keyframes float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-4px); }
+}
 .animate-fade-up { animation: fadeUp 0.3s ease-out forwards; }
 .animate-slide-in { animation: slideIn 0.25s ease-out forwards; }
 .animate-pulse-dot { animation: pulse-dot 1.5s ease-in-out infinite; }
 .animate-spin { animation: spin 1s linear infinite; }
+.animate-float { animation: float 3.4s ease-in-out infinite; }
 
 /* ============================================================
    Prose — AI Markdown Content (light surface)
