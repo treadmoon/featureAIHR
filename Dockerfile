@@ -1,11 +1,20 @@
 FROM node:20-alpine AS builder
 WORKDIR /app
 COPY package.json package-lock.json ./
-RUN npm ci
+RUN npm ci --ignore-scripts --no-audit --no-fund \
+  || npm install --ignore-scripts --no-audit --no-fund \
+  || (echo "Dependency install failed. Dumping npm logs..." \
+    && ls -lah /root/.npm/_logs || true \
+    && for f in /root/.npm/_logs/*.log; do echo "==== $f ===="; cat "$f"; done \
+    && exit 1)
 COPY . .
 ARG NEXT_PUBLIC_SUPABASE_URL
 ARG NEXT_PUBLIC_SUPABASE_ANON_KEY
-RUN npm run build
+RUN npm run build \
+  || (echo "Next build failed. Dumping npm logs..." \
+    && ls -lah /root/.npm/_logs || true \
+    && for f in /root/.npm/_logs/*.log; do echo "==== $f ===="; cat "$f"; done \
+    && exit 1)
 
 FROM node:20-alpine
 WORKDIR /app
