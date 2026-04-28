@@ -13,8 +13,8 @@ declare
   v_dept_id uuid;
   v_manager_id uuid;
   v_parent_id uuid;
-  v_hr_dept manager_id uuid;
-  v_fin_dept manager_id uuid;
+  v_hr_dept_id uuid;
+  v_fin_dept_id uuid;
   v_hr_manager_id uuid;
   v_fin_manager_id uuid;
   v_admins uuid[];
@@ -107,6 +107,17 @@ begin
   elsif p_type = 'onboard' then
     v_step_number := v_step_number + 1;
     insert into approval_steps (request_id, step, approver_id) values (v_request_id, v_step_number, p_applicant_id);
+
+  elsif p_type = 'promotion' or p_type = 'recruitment' or p_type = 'other' then
+    -- 这些类型需要经理和HR审批
+    if v_manager_id is not null then
+      v_step_number := v_step_number + 1;
+      insert into approval_steps (request_id, step, approver_id) values (v_request_id, v_step_number, v_manager_id);
+    end if;
+    if v_hr_manager_id is not null and v_hr_manager_id != v_manager_id then
+      v_step_number := v_step_number + 1;
+      insert into approval_steps (request_id, step, approver_id) values (v_request_id, v_step_number, v_hr_manager_id);
+    end if;
   end if;
 
   -- 兜底：没有任何审批人时由 admin 处理
