@@ -302,12 +302,15 @@ export default function HomeContent() {
   }, [messages]);
 
   return (
-    <div className="flex flex-col h-screen w-full" style={{ background: '#ffffff', color: '#111827' }}>
+    <div
+      className="flex flex-col h-screen w-full ai-bg"
+      style={{ color: '#111827' }}
+    >
 
       {/* ── Header ─────────────────────────────────────── */}
       <header
-        className="flex h-14 shrink-0 items-center justify-between px-4 md:px-5 sticky top-0 z-30"
-        style={{ background: '#f7f7f8', borderBottom: '1px solid rgba(0,0,0,0.04)' }}
+        className="flex h-14 shrink-0 items-center justify-between px-4 md:px-5 sticky top-0 z-30 ai-glass"
+        style={{ borderBottom: '1px solid rgba(94,106,210,0.12)' }}
       >
         {/* Left: sidebar toggle + logo */}
         <div className="flex items-center gap-3">
@@ -459,7 +462,7 @@ export default function HomeContent() {
       </header>
 
       {/* ── Main Chat Area ─────────────────────────────── */}
-      <main className="flex-1 overflow-y-auto" style={{ background: '#ffffff' }}>
+      <main className="flex-1 overflow-y-auto">
         <div className="mx-auto flex max-w-3xl flex-col gap-4 px-4 md:px-6 lg:px-8 pb-48">
 
           {/* Notification banners */}
@@ -505,15 +508,17 @@ export default function HomeContent() {
           {/* Welcome state */}
           {messages.length === 0 ? (
             <div className="mt-16 md:mt-20 flex flex-col items-center text-center animate-fade-up">
+              <div className="mb-4 rounded-full border px-3 py-1 text-[11px] font-medium ai-badge">
+                {language === 'zh' ? '✨ AI 智能工作流助手' : '✨ AI Workflow Copilot'}
+              </div>
               {/* Bot avatar */}
               <div className="relative mb-8">
                 <div
-                  className="absolute inset-0 rounded-2xl opacity-20 blur-xl"
-                  style={{ background: 'linear-gradient(135deg, #5e6ad2, #5e6ad2)' }}
+                  className="absolute inset-0 rounded-2xl opacity-30 blur-xl animate-float"
+                  style={{ background: 'radial-gradient(circle at 30% 30%, #818cf8, #5e6ad2)' }}
                 />
                 <div
-                  className="relative flex items-center justify-center rounded-2xl w-16 h-16"
-                  style={{ background: 'linear-gradient(135deg, #5e6ad2, #5e6ad2)', boxShadow: '0 8px 32px rgba(94,106,210,0.3)' }}
+                  className="relative flex items-center justify-center rounded-2xl w-16 h-16 ai-orb"
                 >
                   <Bot size={32} color="#fff" />
                 </div>
@@ -536,19 +541,15 @@ export default function HomeContent() {
                   <button
                     key={i}
                     onClick={() => quickSend(s)}
-                    className="group flex text-left items-center gap-3 px-4 py-3 rounded-lg transition-all duration-150 animate-fade-up"
-                    style={{
-                      background: 'rgba(0,0,0,0.02)',
-                      border: '1px solid rgba(0,0,0,0.08)',
-                    }}
+                    className="group flex text-left items-center gap-3 px-4 py-3 rounded-lg transition-all duration-150 animate-fade-up ai-chip"
                     onMouseEnter={e => {
-                      e.currentTarget.style.background = 'rgba(0,0,0,0.05)';
-                      e.currentTarget.style.borderColor = 'rgba(113,112,255,0.3)';
+                      e.currentTarget.style.background = 'rgba(255,255,255,0.85)';
+                      e.currentTarget.style.borderColor = 'rgba(94,106,210,0.3)';
                       e.currentTarget.style.transform = 'translateY(-1px)';
                     }}
                     onMouseLeave={e => {
-                      e.currentTarget.style.background = 'rgba(0,0,0,0.02)';
-                      e.currentTarget.style.borderColor = 'rgba(0,0,0,0.08)';
+                      e.currentTarget.style.background = 'rgba(255,255,255,0.65)';
+                      e.currentTarget.style.borderColor = 'rgba(94,106,210,0.16)';
                       e.currentTarget.style.transform = 'none';
                     }}
                   >
@@ -820,11 +821,10 @@ export default function HomeContent() {
         <div className="mx-auto max-w-3xl px-4">
           <form
             onSubmit={(e) => { e.preventDefault(); handleSend(); }}
-            className="flex items-end gap-2 rounded-lg px-3 py-2.5 mb-2"
+            className="flex items-end gap-2 rounded-xl px-3 py-2.5 mb-2 ai-glass"
             style={{
-              background: 'rgba(0,0,0,0.03)',
-              border: '1px solid rgba(0,0,0,0.08)',
-              boxShadow: '0 4px 24px rgba(0,0,0,0.10)',
+              border: '1px solid rgba(94,106,210,0.16)',
+              boxShadow: '0 10px 40px rgba(94,106,210,0.16)',
             }}
           >
             <textarea
@@ -842,7 +842,7 @@ export default function HomeContent() {
               disabled={isLoading || !input.trim()}
               className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md transition-all"
               style={{
-                background: 'linear-gradient(135deg, #5e6ad2, #5e6ad2)',
+                background: 'linear-gradient(135deg, #5e6ad2, #7c8bff)',
                 color: '#fff',
                 opacity: (isLoading || !input.trim()) ? 0.4 : 1,
                 cursor: (isLoading || !input.trim()) ? 'not-allowed' : 'pointer',
