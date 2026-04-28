@@ -10,8 +10,10 @@ import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase-browser';
 import { useSettings } from '../store/useSettings';
+import { useChatContext } from './components/ChatProvider';
 import ToolCards from './components/tool-cards/ToolCards';
 import ChatSidebar from './components/ChatSidebar';
+import ApprovalDetailContent from './approvals/[id]/ApprovalDetailClient';
 import { track, trackPageView, trackError } from '@/lib/analytics';
 
 const DICT = {
@@ -115,7 +117,7 @@ export default function HomeContent() {
   const router = useRouter();
   const supabase = createClient();
 
-  const [authUser, setAuthUser] = useState<{ email?: string; role?: string; effectiveRole?: string } | null>(null);
+  const [authUser, setAuthUser] = useState<{ id?: string; email?: string; role?: string; effectiveRole?: string } | null>(null);
 
   useEffect(() => {
     supabase.auth.getUser().then(({ data: { user } }: any) => {
@@ -129,7 +131,7 @@ export default function HomeContent() {
     });
 
     async function fetchProfile(uid: string, email?: string | null) {
-      setAuthUser({ email: email || '' });
+      setAuthUser({ id: uid, email: email || '' });
       const { data: profile } = await supabase.from('profiles').select('role, name').eq('id', uid).single();
       if (!profile) return;
       let effectiveRole = profile.role;
@@ -138,7 +140,7 @@ export default function HomeContent() {
         const { data: subordinates } = await supabase.from('profiles').select('id').eq('report_to', uid).limit(1);
         effectiveRole = (managed && managed.length > 0) || (subordinates && subordinates.length > 0) ? 'manager' : 'employee';
       }
-      setAuthUser({ email: email || '', role: profile.role, effectiveRole });
+      setAuthUser({ id: uid, email: email || '', role: profile.role, effectiveRole });
     }
   }, []);
 
@@ -164,7 +166,6 @@ export default function HomeContent() {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const isLoading = status === 'submitted' || status === 'streaming';
   const [pendingItems, setPendingItems] = useState<any[]>([]);
-  const pendingCount = pendingItems.length;
   const [notifications, setNotifications] = useState<any[]>([]);
   const [dismissedNotifs, setDismissedNotifs] = useState<Set<string>>(new Set());
   const [menuOpen, setMenuOpen] = useState(false);
@@ -173,6 +174,22 @@ export default function HomeContent() {
   const [sessions, setSessions] = useState<any[]>([]);
   const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
   const savedMsgCount = useRef(0);
+
+  // Chat state that was restored from removed useChat + useChatPersist
+  const [input, setInput] = useState('');
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const msgTimestamps = useRef<Map<string, number>>(new Map());
+
+  // Modals & feedback state
+  const [feedbackModal, setFeedbackModal] = useState<{ id: string; rating: string } | null>(null);
+  const [feedbackSent, setFeedbackSent] = useState<Set<string>>(new Set());
+  const [approvalModal, setApprovalModal] = useState<{ id: string; title: string; status: string } | null>(null);
+  const [confirmedDrafts, setConfirmedDrafts] = useState<Set<string>>(new Set());
+
+  // eRole derived from authUser effectiveRole
+  const eRole = (authUser?.effectiveRole || 'employee') as 'employee' | 'manager' | 'admin';
+  const pendingCount = pendingItems.length;
 
   useEffect(() => {
     fetch('/api/approvals?tab=pending').then(r => r.json()).then(d => { if (Array.isArray(d)) setPendingItems(d); }).catch(() => {});
@@ -190,7 +207,7 @@ export default function HomeContent() {
   useEffect(() => { loadSessions(); }, []);
 
   useEffect(() => {
-    if (status === 'streaming' || status === 'submitted' || messages.length === 0) return;
+    if (isLoading || messages.length === 0) return;
     if (messages.length <= savedMsgCount.current) return;
     const newMsgs = messages.slice(savedMsgCount.current).filter((m: any) => !m.id?.startsWith('hist-'));
     savedMsgCount.current = messages.length;
@@ -209,7 +226,7 @@ export default function HomeContent() {
         loadSessions();
       }
     })();
-  }, [messages, status]);
+  }, [messages, isLoading]);
 
   const loadSession = async (sid: string) => {
     const res = await fetch('/api/chat-history', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'load', sessionId: sid }) });
@@ -244,14 +261,11 @@ export default function HomeContent() {
     }
   }, [messages]);
 
-  useEffect(() => {
-    if (status === 'error') {
-      console.error('[Chat error]', error);
-      trackError('chat_error', { message: error?.message });
+  const handleClear = () => {
+    if (window.confirm('确定要清空当前对话吗？此操作不可恢复。')) {
+      handleNewChat();
     }
-  }, [status, error]);
-
-  const handleClear = () => { handleNewChat(); };
+  };
 
   const sendFeedback = async (msgId: string, rating: string, reason?: string) => {
     const msg = messages.find(m => m.id === msgId);
@@ -287,18 +301,16 @@ export default function HomeContent() {
 
   const handleSend = () => {
     if (!input.trim() || isLoading) return;
-    if (status === 'error') clearError();
     track('chat_send', { length: input.length });
-    sendMessage({ role: 'user', parts: [{ type: 'text', text: input }] });
+    sendMessage(input);
     setInput('');
     if (textareaRef.current) textareaRef.current.style.height = 'auto';
   };
 
   const quickSend = (text: string) => {
     if (isLoading) return;
-    if (status === 'error') clearError();
     track('shortcut_use', { text: text.slice(0, 30) });
-    sendMessage({ role: 'user', parts: [{ type: 'text', text }] });
+    sendMessage(text);
   };
 
   useEffect(() => {
@@ -614,7 +626,7 @@ export default function HomeContent() {
                           <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeSanitize]}>{part.text}</ReactMarkdown>
                         </div>
                       ))}
-                    <ToolCards message={message} confirmedDrafts={confirmedDrafts} setConfirmedDrafts={setConfirmedDrafts} isLoading={isLoading} quickSend={quickSend} />
+                    <ToolCards message={message} confirmedDrafts={confirmedDrafts} setConfirmedDrafts={setConfirmedDrafts} isLoading={isLoading} quickSend={quickSend} onApprovalClick={(id, title, status) => setApprovalModal({ id, title, status })} />
                     {(!message.parts || message.parts.length === 0) && (
                       <p className="leading-relaxed whitespace-pre-wrap" style={{ color: '#374151' }}>{message.content}</p>
                     )}
@@ -626,7 +638,7 @@ export default function HomeContent() {
                     style={{ justifyContent: message.role === 'user' ? 'flex-end' : 'flex-start' }}>
 
                     <span className="text-[11px]" style={{ color: '#d1d5db' }}>{fmtTime(message.id)}</span>
-                    {message.role === 'assistant' && !(mIndex === messages.length - 1 && status === 'streaming') && (
+                    {message.role === 'assistant' && !(mIndex === messages.length - 1 && isLoading) && (
                       feedbackSent.has(message.id)
                         ? <span className="text-[11px]" style={{ color: '#10b981' }}>✓ {t.feedback}</span>
                         : <>
@@ -727,6 +739,49 @@ export default function HomeContent() {
         </div>
       )}
 
+      {/* ── Approval Detail Modal ────────────────────── */}
+      {approvalModal && (
+        <div
+          className="fixed inset-0 flex items-center justify-center z-50 p-4"
+          style={{ background: 'rgba(0,0,0,0.4)', backdropFilter: 'blur(4px)' }}
+          onClick={() => setApprovalModal(null)}
+        >
+          <div
+            className="w-full max-w-lg rounded-xl overflow-hidden"
+            style={{ background: '#ffffff', border: '1px solid rgba(0,0,0,0.08)', boxShadow: '0 16px 64px rgba(0,0,0,0.2)', maxHeight: '85vh', display: 'flex', flexDirection: 'column' }}
+            onClick={e => e.stopPropagation()}
+          >
+            {/* Header */}
+            <div className="flex items-center justify-between px-5 py-4" style={{ borderBottom: '1px solid rgba(0,0,0,0.06)' }}>
+              <div className="flex items-center gap-2">
+                <span className="text-lg">🔍</span>
+                <h3 className="text-[15px] font-semibold" style={{ color: '#111827' }}>审批详情</h3>
+              </div>
+              <button
+                onClick={() => setApprovalModal(null)}
+                style={{ color: '#9ca3af', padding: '4px', cursor: 'pointer' }}
+              >
+                ✕
+              </button>
+            </div>
+            {/* Content */}
+            <div className="flex-1 overflow-y-auto p-5">
+              <ApprovalDetailContent id={approvalModal.id} userId={authUser?.id || ''} />
+            </div>
+            {/* Footer */}
+            <div className="px-5 py-3" style={{ borderTop: '1px solid rgba(0,0,0,0.06)', background: 'rgba(0,0,0,0.01)' }}>
+              <button
+                onClick={() => router.push(`/approvals/${approvalModal.id}`)}
+                className="w-full py-2 text-[13px] font-medium rounded-lg transition-colors"
+                style={{ background: 'rgba(99,102,241,0.1)', color: '#6366f1', border: '1px solid rgba(99,102,241,0.2)' }}
+              >
+                展开完整页面 →
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* ── Footer: input + shortcuts ─────────────────── */}
       <footer
         className="fixed bottom-0 w-full"
@@ -735,19 +790,6 @@ export default function HomeContent() {
           paddingTop: '48px',
         }}
       >
-        {/* Error banner */}
-        {status === 'error' && (
-          <div className="mx-auto max-w-3xl px-4 pb-2 animate-fade-up">
-            <div
-              className="flex items-center justify-between rounded-lg px-4 py-2.5 text-[13px]"
-              style={{ background: 'rgba(244,63,94,0.12)', border: '1px solid rgba(244,63,94,0.25)', color: '#f43f5e' }}
-            >
-              <span>⚠️ {t.networkError}</span>
-              <button onClick={() => clearError()} className="font-semibold ml-3 text-[12px]" style={{ color: '#f43f5e' }}>✕</button>
-            </div>
-          </div>
-        )}
-
         {/* Draft confirm buttons */}
         {!isLoading && (
           <div className="mx-auto max-w-3xl px-4 pb-2 flex flex-wrap gap-2 justify-center">
