@@ -1,6 +1,5 @@
 import type { Metadata } from "next";
 import "./globals.css";
-import ChatProvider from "./components/ChatProvider";
 
 export const metadata: Metadata = {
   title: "AI 智能秘书 — HR & IT Copilot",

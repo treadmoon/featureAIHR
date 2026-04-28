@@ -1,5 +1,7 @@
 'use client';
 
+import { useChat } from '@ai-sdk/react';
+import { DefaultChatTransport } from 'ai';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import rehypeSanitize from 'rehype-sanitize';
@@ -148,7 +150,21 @@ export default function HomeContent() {
     router.refresh();
   };
 
-  const { messages, sendMessage, setMessages, clearMessages, isLoading, isSuspended } = useChatContext();
+  const { messages, sendMessage, status, error, clearError, setMessages } = useChat({
+    transport: new DefaultChatTransport({ api: '/api/chat' }),
+    onError: (err) => { console.error('[useChat error]', err); },
+  });
+
+  const eRole = (authUser?.effectiveRole || 'employee') as 'employee' | 'manager' | 'admin';
+
+  const [input, setInput] = useState('');
+  const [confirmedDrafts, setConfirmedDrafts] = useState<Set<string>>(new Set());
+  const [feedbackSent, setFeedbackSent] = useState<Set<string>>(new Set());
+  const [feedbackModal, setFeedbackModal] = useState<{ id: string; rating: string } | null>(null);
+  const msgTimestamps = useRef<Map<string, number>>(new Map());
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const isLoading = status === 'submitted' || status === 'streaming';
   const [pendingItems, setPendingItems] = useState<any[]>([]);
   const [notifications, setNotifications] = useState<any[]>([]);
   const [dismissedNotifs, setDismissedNotifs] = useState<Set<string>>(new Set());
