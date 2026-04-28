@@ -62,7 +62,7 @@ export async function POST(req: NextRequest) {
 
   // 删除单个会话
   if (body.action === 'delete' && body.sessionId) {
-    await supabase.from('chat_sessions').delete().eq('id', body.sessionId);
+    await supabase.from('chat_sessions').delete().eq('id', body.sessionId).eq('user_id', user.id);
     return Response.json({ ok: true });
   }
 

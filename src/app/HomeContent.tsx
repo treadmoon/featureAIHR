@@ -289,7 +289,7 @@ export default function HomeContent() {
   const handleSend = () => {
     if (!input.trim() || isLoading) return;
     track('chat_send', { length: input.length });
-    sendMessage(input);
+    sendMessage({ text: input });
     setInput('');
     if (textareaRef.current) textareaRef.current.style.height = 'auto';
   };
@@ -297,7 +297,7 @@ export default function HomeContent() {
   const quickSend = (text: string) => {
     if (isLoading) return;
     track('shortcut_use', { text: text.slice(0, 30) });
-    sendMessage(text);
+    sendMessage({ text });
   };
 
   useEffect(() => {

@@ -7,6 +7,7 @@ import { requireAdmin } from '@/lib/auth-permissions';
 export async function POST(req: NextRequest) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return Response.json({ error: '未登录' }, { status: 401 });
 
   let body: any;
   try {
@@ -18,7 +19,7 @@ export async function POST(req: NextRequest) {
   if (!Array.isArray(events) || !events.length) return Response.json({ ok: true });
 
   const rows = events.slice(0, 50).map((e: any) => ({
-    user_id: user?.id || null,
+    user_id: user.id,
     event_type: String(e.event_type || 'unknown').slice(0, 50),
     event_name: String(e.event_name || '').slice(0, 200),
     metadata: e.metadata || {},

@@ -1,6 +1,7 @@
 'use client';
 
 import { useChat } from '@ai-sdk/react';
+import { DefaultChatTransport } from 'ai';
 import { useEffect, useRef, useState, createContext, useContext, useCallback } from 'react';
 
 const STORAGE_KEY = 'chat_messages';
@@ -42,9 +43,8 @@ export default function ChatProvider({ children }: { children: React.ReactNode }
   // Track if stream finished while user was away
   const streamFinishedWhileAwayRef = useRef(false);
 
-  // @ts-expect-error - AI SDK v6 types
   const { messages: chatMessages, sendMessage, setMessages: setChatMessages, status } = useChat({
-    api: '/api/chat',
+    transport: new DefaultChatTransport({ api: '/api/chat' }),
     onError: (err) => { console.error('[useChat error]', err); },
     onFinish: () => {
       // Stream completed server-side while user may be on another page
@@ -123,7 +123,6 @@ export default function ChatProvider({ children }: { children: React.ReactNode }
   }, [isSuspended]);
 
   const handleSendMessage = useCallback((text: string) => {
-    // @ts-expect-error - AI SDK sendMessage accepts { text: string } object
     sendMessage({ text });
   }, [sendMessage]);
 
@@ -133,7 +132,7 @@ export default function ChatProvider({ children }: { children: React.ReactNode }
   }, [setChatMessages]);
 
   const handleSetMessages = useCallback((messages: ChatMessage[]) => {
-    setChatMessages(messages);
+    setChatMessages(messages as any);
   }, [setChatMessages]);
 
   const handleSetSuspended = useCallback((v: boolean) => {

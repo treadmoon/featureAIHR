@@ -9,12 +9,17 @@ export class AuthError extends Error {
   }
 }
 
+function getAdmin() {
+  if (!supabaseAdmin) throw new AuthError('服务端配置错误：缺少 SUPABASE_SERVICE_ROLE_KEY', 500);
+  return supabaseAdmin;
+}
+
 /**
  * Get user role from database (server-side only).
  * Never trust role from client — always compute server-side.
  */
 export async function getServerRole(userId: string): Promise<Role> {
-  const { data: profile } = await (supabaseAdmin!)
+  const { data: profile } = await getAdmin()
     .from('profiles')
     .select('role')
     .eq('id', userId)
@@ -26,7 +31,7 @@ export async function getServerRole(userId: string): Promise<Role> {
   if (profile.role === 'manager') return 'manager';
 
   // Check if user is a department manager (via departments.manager_id)
-  const { data: managed } = await (supabaseAdmin!)
+  const { data: managed } = await getAdmin()
     .from('departments')
     .select('id')
     .eq('manager_id', userId)
@@ -89,7 +94,7 @@ export async function canAccessEmployee(
 
   if (role === 'manager') {
     // Check if target is in viewer's team
-    const { data: subordinate } = await (supabaseAdmin!)
+    const { data: subordinate } = await getAdmin()
       .from('profiles')
       .select('id')
       .eq('id', targetEmployeeId)
