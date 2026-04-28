@@ -5,6 +5,7 @@
   "scripts": {
     "dev": "next dev -p 51984",
     "build": "next build",
+    "verify:builder": "npm ci --ignore-scripts --no-audit --no-fund && npm run build",
     "start": "next start",
     "lint": "eslint"
   },
