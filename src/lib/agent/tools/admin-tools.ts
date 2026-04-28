@@ -9,6 +9,7 @@ function escapeIlike(input: string): string {
 export const searchEmployeeTool: ToolDefinition = {
   name: 'searchEmployee',
   description: '按姓名、部门或职位模糊搜索员工信息（仅 admin 可用）',
+  requiredRoles: ['admin'],
   inputSchema: z.object({ keyword: z.string() }),
   execute: async (args: unknown, ctx: AgentContext): Promise<ToolResult> => {
     const { keyword } = args as { keyword: string };
@@ -25,6 +26,7 @@ export const searchEmployeeTool: ToolDefinition = {
 export const updateEmployeeTool: ToolDefinition = {
   name: 'updateEmployee',
   description: '修改员工的部门、职位、职级或状态（仅 admin 可用）。修改前必须先用 searchEmployee 确认员工存在。',
+  requiredRoles: ['admin'],
   inputSchema: z.object({
     employeeName: z.string(),
     field: z.enum(['department', 'job_title', 'job_level', 'is_active', 'phone']),
@@ -54,6 +56,7 @@ export const updateEmployeeTool: ToolDefinition = {
 export const getCompanyStatsTool: ToolDefinition = {
   name: 'getCompanyStats',
   description: '查询全公司统计数据：在职人数、部门分布、考勤异常率等（仅 admin 可用）',
+  requiredRoles: ['admin'],
   inputSchema: z.object({ month: z.string().optional() }),
   execute: async (args: unknown, ctx: AgentContext): Promise<ToolResult> => {
     const { month } = args as { month?: string };

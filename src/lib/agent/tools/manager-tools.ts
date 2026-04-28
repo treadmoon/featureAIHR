@@ -4,6 +4,7 @@ import { ToolDefinition, AgentContext, ToolResult } from './types';
 export const getTeamAttendanceTool: ToolDefinition = {
   name: 'getTeamAttendance',
   description: '查询当前经理所管辖部门的团队考勤汇总（仅 manager/admin 可用）',
+  requiredRoles: ['manager', 'admin'],
   inputSchema: z.object({ month: z.string().optional() }),
   execute: async (args: unknown, ctx: AgentContext): Promise<ToolResult> => {
     const { month } = args as { month?: string };
@@ -50,6 +51,7 @@ export const getTeamAttendanceTool: ToolDefinition = {
 export const getTeamLeaveCalendarTool: ToolDefinition = {
   name: 'getTeamLeaveCalendar',
   description: '查看团队近期请假情况：谁请假了、什么时间、什么类型（仅 manager/admin 可用）',
+  requiredRoles: ['manager', 'admin'],
   inputSchema: z.object({}),
   execute: async (_args: unknown, ctx: AgentContext): Promise<ToolResult> => {
     if (ctx.role !== 'manager' && ctx.role !== 'admin') {
@@ -86,6 +88,7 @@ export const getTeamLeaveCalendarTool: ToolDefinition = {
 export const getTeamMembersTool: ToolDefinition = {
   name: 'getTeamMembers',
   description: '查看当前经理管辖部门的团队花名册（仅 manager/admin 可用）',
+  requiredRoles: ['manager', 'admin'],
   inputSchema: z.object({}),
   execute: async (_args: unknown, ctx: AgentContext): Promise<ToolResult> => {
     if (ctx.role !== 'manager' && ctx.role !== 'admin') {
