@@ -33,6 +33,9 @@ export interface ChatContext {
   // Processed messages for LLM
   cleanedMessages: any[] | null;
 
+  // Memory
+  memoryPrompt: string;
+
   // Runtime tracking
   runtimeRecord: any;
 

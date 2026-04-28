@@ -8,3 +8,5 @@ export { preHooksMiddleware } from './preHooks';
 export { tokenBudgetMiddleware } from './tokenBudget';
 export { contextPrepareMiddleware } from './contextPrepare';
 export { loopDetectionMiddleware } from './loopDetection';
+export { memoryMiddleware } from './memory';
+export { summarizationMiddleware } from './summarization';

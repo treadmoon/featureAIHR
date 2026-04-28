@@ -48,28 +48,59 @@ export function needsCompression(messages: Message[], maxTokens: number = 8192, 
 }
 
 /**
- * 压缩上下文 - 保留最近的消息和关键信息
+ * 压缩上下文 — 用 LLM 摘要替代粗暴截断
  *
  * 策略：
- * 1. 保留 system prompt（不压缩）
- * 2. 保留最近 10 条消息
- * 3. 丢弃中间的冗余内容
+ * 1. 保留 system prompt
+ * 2. 如果超阈值，将旧消息交给 LLM 生成摘要
+ * 3. 用 [摘要] 消息替换旧消息，保留最近 6 条原文
+ * 4. 如果 LLM 摘要失败，降级为截断（保留最近 8 条）
  */
-export function compressContext(messages: Message[], maxTokens: number = 8192): Message[] {
+export async function compressContext(messages: Message[], maxTokens: number = 8192): Promise<Message[]> {
   const systemMessages = messages.filter(m => m.role === 'system');
   const otherMessages = messages.filter(m => m.role !== 'system');
 
-  // 保留最近的 10 条
-  const recentMessages = otherMessages.slice(-10);
-
-  // 检查 token 数
-  const currentTokens = estimateMessagesTokens(recentMessages);
-  if (currentTokens <= maxTokens * 0.7) {
-    return [...systemMessages, ...recentMessages];
+  if (otherMessages.length <= 8) {
+    return [...systemMessages, ...otherMessages];
   }
 
-  // 进一步压缩：保留最近 5 条
-  return [...systemMessages, ...otherMessages.slice(-5)];
+  const recentCount = 6;
+  const oldMessages = otherMessages.slice(0, -recentCount);
+  const recentMessages = otherMessages.slice(-recentCount);
+
+  // Try LLM summarization
+  try {
+    const apiKey = process.env.VOLCENGINE_API_KEY;
+    const modelId = process.env.VOLCENGINE_MODEL_ID;
+    if (!apiKey || !modelId) throw new Error('no config');
+
+    const { createOpenAI } = await import('@ai-sdk/openai');
+    const { generateText } = await import('ai');
+    const volcengine = createOpenAI({ apiKey, baseURL: 'https://ark.cn-beijing.volces.com/api/v3' });
+
+    const oldText = oldMessages
+      .map(m => {
+        const text = m.content || m.parts?.filter(p => p.type === 'text').map(p => p.text || '').join(' ') || '';
+        return `${m.role === 'user' ? '用户' : 'AI'}: ${text}`;
+      })
+      .join('\n')
+      .slice(0, 3000); // Cap input to avoid token explosion
+
+    const { text: summary } = await generateText({
+      model: volcengine.chat(modelId),
+      prompt: `请用2-3句话概括以下对话的要点，保留关键信息（如数字、日期、工单号、操作结果）：\n\n${oldText}`,
+      maxOutputTokens: 200,
+    });
+
+    return [
+      ...systemMessages,
+      { role: 'assistant' as const, content: `[之前的对话摘要] ${summary}` },
+      ...recentMessages,
+    ];
+  } catch {
+    // Fallback: simple truncation
+    return [...systemMessages, ...otherMessages.slice(-8)];
+  }
 }
 
 /**
