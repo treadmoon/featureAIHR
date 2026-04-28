@@ -16,12 +16,11 @@ export interface ChatMessage {
 
 interface ChatContextValue {
   messages: ChatMessage[];
+  status: string;
   isLoading: boolean;
   sendMessage: (text: string) => void;
   setMessages: (messages: ChatMessage[]) => void;
   clearMessages: () => void;
-  isSuspended: boolean;
-  setSuspended: (v: boolean) => void;
 }
 
 const ChatContext = createContext<ChatContextValue | null>(null);
@@ -38,23 +37,14 @@ export function useChatContextSafe() {
 
 export default function ChatProvider({ children }: { children: React.ReactNode }) {
   const [isHydrated, setIsHydrated] = useState(false);
-  const [isSuspended, setIsSuspended] = useState(false);
-
-  // Track if stream finished while user was away
-  const streamFinishedWhileAwayRef = useRef(false);
 
   const { messages: chatMessages, sendMessage, setMessages: setChatMessages, status } = useChat({
     transport: new DefaultChatTransport({ api: '/api/chat' }),
     onError: (err) => { console.error('[useChat error]', err); },
-    onFinish: () => {
-      // Stream completed server-side while user may be on another page
-      streamFinishedWhileAwayRef.current = isSuspended;
-    },
   });
 
   const isStreaming = status === 'submitted' || status === 'streaming';
   const hasHydrated = useRef(false);
-  const isResumingRef = useRef(false);
 
   // Hydrate from sessionStorage on mount
   useEffect(() => {
@@ -86,42 +76,6 @@ export default function ChatProvider({ children }: { children: React.ReactNode }
     }
   }, [chatMessages, isHydrated]);
 
-  // Watch pathname changes for suspend detection
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
-    if (!isStreaming || isSuspended) return;
-
-    const interval = setInterval(() => {
-      const path = window.location.pathname;
-      if (path !== '/' && !isResumingRef.current && isStreaming) {
-        setIsSuspended(true);
-      }
-      if (path === '/') {
-        isResumingRef.current = false;
-      }
-    }, 500);
-
-    return () => clearInterval(interval);
-  }, [isStreaming, isSuspended]);
-
-  // Auto-resume when user returns to homepage
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
-
-    const interval = setInterval(() => {
-      if (isSuspended && window.location.pathname === '/') {
-        // If stream finished while away, don't auto-resume — messages are complete
-        if (streamFinishedWhileAwayRef.current) {
-          streamFinishedWhileAwayRef.current = false;
-          return;
-        }
-        setIsSuspended(false);
-      }
-    }, 1000);
-
-    return () => clearInterval(interval);
-  }, [isSuspended]);
-
   const handleSendMessage = useCallback((text: string) => {
     sendMessage({ text });
   }, [sendMessage]);
@@ -135,24 +89,15 @@ export default function ChatProvider({ children }: { children: React.ReactNode }
     setChatMessages(messages as any);
   }, [setChatMessages]);
 
-  const handleSetSuspended = useCallback((v: boolean) => {
-    if (v === false) {
-      isResumingRef.current = true;
-      setTimeout(() => { isResumingRef.current = false; }, 2000);
-    }
-    setIsSuspended(v);
-  }, []);
-
   return (
     <ChatContext.Provider
       value={{
         messages: chatMessages as ChatMessage[],
-        isLoading: isStreaming && !isSuspended,
+        status,
+        isLoading: isStreaming,
         sendMessage: handleSendMessage,
         setMessages: handleSetMessages,
         clearMessages: handleClearMessages,
-        isSuspended,
-        setSuspended: handleSetSuspended,
       }}
     >
       {children}

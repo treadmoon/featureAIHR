@@ -1,7 +1,6 @@
 'use client';
 
-import { useChat } from '@ai-sdk/react';
-import { DefaultChatTransport } from 'ai';
+import { useChatContext } from './components/ChatProvider';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import rehypeSanitize from 'rehype-sanitize';
@@ -10,7 +9,6 @@ import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase-browser';
 import { useSettings } from '../store/useSettings';
-import { useChatContext } from './components/ChatProvider';
 import ToolCards from './components/tool-cards/ToolCards';
 import ChatSidebar from './components/ChatSidebar';
 import ApprovalDetailContent from './approvals/[id]/ApprovalDetailClient';
@@ -150,10 +148,7 @@ export default function HomeContent() {
     router.refresh();
   };
 
-  const { messages, sendMessage, status, error, clearError, setMessages } = useChat({
-    transport: new DefaultChatTransport({ api: '/api/chat' }),
-    onError: (err) => { console.error('[useChat error]', err); },
-  });
+  const { messages, sendMessage, status, setMessages } = useChatContext();
 
   const eRole = (authUser?.effectiveRole || 'employee') as 'employee' | 'manager' | 'admin';
 
@@ -289,7 +284,7 @@ export default function HomeContent() {
   const handleSend = () => {
     if (!input.trim() || isLoading) return;
     track('chat_send', { length: input.length });
-    sendMessage({ text: input });
+    sendMessage(input);
     setInput('');
     if (textareaRef.current) textareaRef.current.style.height = 'auto';
   };
@@ -297,7 +292,7 @@ export default function HomeContent() {
   const quickSend = (text: string) => {
     if (isLoading) return;
     track('shortcut_use', { text: text.slice(0, 30) });
-    sendMessage({ text });
+    sendMessage(text);
   };
 
   useEffect(() => {

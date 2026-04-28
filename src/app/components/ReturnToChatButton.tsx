@@ -11,22 +11,17 @@ export default function ReturnToChatButton() {
 
   if (!ctx || pathname === '/') return null;
 
-  const { isSuspended, setSuspended } = ctx;
-
-  const handleReturn = () => {
-    setSuspended(false);
-    router.push('/');
-  };
+  const isStreaming = ctx.status === 'submitted' || ctx.status === 'streaming';
 
   return (
     <button
-      onClick={handleReturn}
+      onClick={() => router.push('/')}
       className="fixed bottom-6 left-6 z-50 flex items-center gap-2 px-4 py-3 rounded-full shadow-lg"
       style={{ background: 'linear-gradient(135deg, #5e6ad2, #6366f1)', color: '#ffffff' }}
     >
-      {isSuspended ? <Loader2 size={18} className="animate-spin" /> : <Bot size={18} />}
+      {isStreaming ? <Loader2 size={18} className="animate-spin" /> : <Bot size={18} />}
       <span className="text-[13px] font-medium">
-        {isSuspended ? '继续对话' : '返回对话'}
+        {isStreaming ? '对话进行中…' : '返回对话'}
       </span>
     </button>
   );
