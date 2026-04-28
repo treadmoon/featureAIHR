@@ -2,19 +2,21 @@
 
 import { Bot, Loader2 } from 'lucide-react';
 import { useRouter, usePathname } from 'next/navigation';
-import { useChatContext } from './ChatProvider';
+import { useChatContextSafe } from './ChatProvider';
 
 export default function ReturnToChatButton() {
   const router = useRouter();
   const pathname = usePathname();
-  const { isSuspended, setSuspended } = useChatContext();
+  const ctx = useChatContextSafe();
+
+  if (!ctx || pathname === '/') return null;
+
+  const { isSuspended, setSuspended } = ctx;
 
   const handleReturn = () => {
     setSuspended(false);
     router.push('/');
   };
-
-  if (pathname === '/') return null;
 
   return (
     <button

@@ -31,6 +31,10 @@ export function useChatContext() {
   return ctx;
 }
 
+export function useChatContextSafe() {
+  return useContext(ChatContext);
+}
+
 export default function ChatProvider({ children }: { children: React.ReactNode }) {
   const [isHydrated, setIsHydrated] = useState(false);
   const [isSuspended, setIsSuspended] = useState(false);

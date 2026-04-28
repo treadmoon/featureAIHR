@@ -175,20 +175,7 @@ export default function HomeContent() {
   const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
   const savedMsgCount = useRef(0);
 
-  // Chat state that was restored from removed useChat + useChatPersist
-  const [input, setInput] = useState('');
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
-  const messagesEndRef = useRef<HTMLDivElement>(null);
-  const msgTimestamps = useRef<Map<string, number>>(new Map());
-
-  // Modals & feedback state
-  const [feedbackModal, setFeedbackModal] = useState<{ id: string; rating: string } | null>(null);
-  const [feedbackSent, setFeedbackSent] = useState<Set<string>>(new Set());
   const [approvalModal, setApprovalModal] = useState<{ id: string; title: string; status: string } | null>(null);
-  const [confirmedDrafts, setConfirmedDrafts] = useState<Set<string>>(new Set());
-
-  // eRole derived from authUser effectiveRole
-  const eRole = (authUser?.effectiveRole || 'employee') as 'employee' | 'manager' | 'admin';
   const pendingCount = pendingItems.length;
 
   useEffect(() => {
