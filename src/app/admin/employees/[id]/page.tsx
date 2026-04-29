@@ -16,7 +16,7 @@ export default async function EmployeeDetailPage({ params }: { params: Promise<{
   const { data: employee } = await supabase.from('profiles').select('*').eq('id', id).single();
   if (!employee) redirect('/admin/employees');
 
-  const [transfers, performance, attendance, tickets, expenses, empPositions, departments, positions, jobLevels] = await Promise.all([
+  const [transfers, performance, attendance, tickets, expenses, empPositions, departments, positions, jobLevels, approvals] = await Promise.all([
     supabase.from('employee_transfers').select('*').eq('employee_id', id).order('effective_date', { ascending: false }),
     supabase.from('performance').select('*').eq('employee_id', id).order('created_at', { ascending: false }),
     supabase.from('attendance').select('*').eq('employee_id', id).order('month', { ascending: false }),
@@ -26,6 +26,7 @@ export default async function EmployeeDetailPage({ params }: { params: Promise<{
     supabase.from('departments').select('id, name').eq('is_active', true).order('sort_order'),
     supabase.from('positions').select('id, name, department_id').eq('is_active', true).order('name'),
     supabase.from('job_levels').select('id, name, code, track').eq('is_active', true).order('level'),
+    supabase.from('approval_requests').select('*').eq('applicant_id', id).order('created_at', { ascending: false }),
   ]);
 
   return (
@@ -40,6 +41,7 @@ export default async function EmployeeDetailPage({ params }: { params: Promise<{
       departments={departments.data || []}
       positions={positions.data || []}
       jobLevels={jobLevels.data || []}
+      approvals={approvals.data || []}
       isAdmin={isAdmin}
     />
   );

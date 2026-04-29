@@ -19,10 +19,11 @@ type TabKey = typeof TABS[number]['key'];
 interface Props {
   employee: R; transfers: R[]; performance: R[]; attendance: R[]; tickets: R[]; expenses: R[];
   empPositions: R[]; departments: R[]; positions: R[]; jobLevels: R[];
+  approvals?: R[];
   isAdmin: boolean;
 }
 
-export default function EmployeeDetailClient({ employee, transfers, performance, attendance, tickets, expenses, empPositions, departments, positions, jobLevels, isAdmin }: Props) {
+export default function EmployeeDetailClient({ employee, transfers, performance, attendance, tickets, expenses, empPositions, departments, positions, jobLevels, approvals = [], isAdmin }: Props) {
   const router = useRouter();
   const [tab, setTab] = useState<TabKey>('basic');
   const [editing, setEditing] = useState(false);
@@ -303,27 +304,63 @@ export default function EmployeeDetailClient({ employee, transfers, performance,
 
         {/* ===== 提单记录 ===== */}
         {tab === 'ticket' && (
-          <div className="bg-white rounded-xl shadow-sm p-6">
-            <SectionHeader title="提单记录" isAdmin={isAdmin} onAdd={() => setModal({ type: 'ticket' })} />
-            {tickets.length === 0 ? <EmptyState text="暂无工单记录" /> : (
-              <div className="space-y-3">{tickets.map((t: R) => (
-                <div key={String(t.id)} className="flex items-center justify-between border rounded-lg p-3">
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs px-1.5 py-0.5 rounded bg-gray-100 text-gray-600">{t.type === 'it' ? 'IT' : t.type === 'hr' ? 'HR' : '其他'}</span>
-                      <span className="text-sm font-medium">{String(t.title)}</span>
+          <div className="space-y-4">
+            {/* 审批申请 */}
+            <div className="bg-white rounded-xl shadow-sm p-6">
+              <h3 className="text-sm font-semibold text-gray-700 mb-3">📋 审批申请</h3>
+              {approvals.length === 0 ? <EmptyState text="暂无审批申请记录" /> : (
+                <div className="space-y-3">{approvals.map((a) => {
+                  const t = String(a.type), s = String(a.status);
+                  const typeLabels: Record<string, string> = { leave: '请假', expense: '报销', overtime: '加班', attendance_fix: '补卡', transfer: '调岗', salary_adjust: '调薪', resignation: '离职', onboard: '入职确认' };
+                  const typeIcons: Record<string, string> = { leave: '🏖️', expense: '🧾', overtime: '⏰', attendance_fix: '📋', transfer: '🔄', salary_adjust: '💰', resignation: '👋', onboard: '🎉' };
+                  const statusMap: Record<string, { label: string; cls: string }> = { pending: { label: '审批中', cls: 'bg-yellow-100 text-yellow-700' }, approved: { label: '已通过', cls: 'bg-green-100 text-green-700' }, rejected: { label: '已驳回', cls: 'bg-red-100 text-red-700' }, cancelled: { label: '已撤销', cls: 'bg-gray-100 text-gray-500' } };
+                  const st = statusMap[s] || statusMap.pending;
+                  const p = (a.payload || {}) as Record<string, any>;
+                  const leaveTypes: Record<string, string> = { annual: '年假', sick: '病假', personal: '事假', lieu: '调休', other: '其他' };
+                  let detail = '';
+                  if (t === 'leave') detail = `${leaveTypes[p.leave_type] || p.leave_type || ''} ${p.start_date || ''} ~ ${p.end_date || ''}`;
+                  else if (t === 'expense') detail = `¥${Number(p.amount || 0).toLocaleString()} · ${p.expense_type || ''}`;
+                  else if (t === 'overtime') detail = `${p.date || ''} · ${p.hours || ''}小时`;
+                  return (
+                    <div key={String(a.id)} className="flex items-center justify-between border rounded-lg p-3">
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <span className="text-lg">{typeIcons[t] || '📄'}</span>
+                          <span className="text-sm font-medium">{typeLabels[t] || t}</span>
+                          <span className={`px-2 py-0.5 rounded-full text-xs ${st.cls}`}>{st.label}</span>
+                        </div>
+                        {detail && <p className="text-xs text-gray-500 mt-0.5">{detail}</p>}
+                        {p.reason && <p className="text-xs text-gray-400 mt-0.5 line-clamp-1">{String(p.reason)}</p>}
+                      </div>
+                      <span className="text-xs text-gray-400 shrink-0">{String(a.created_at).slice(0, 10)}</span>
                     </div>
-                    {t.description ? <p className="text-xs text-gray-400 mt-0.5 line-clamp-1">{String(t.description)}</p> : null}
+                  );
+                })}</div>
+              )}
+            </div>
+            {/* IT/HR 工单 */}
+            <div className="bg-white rounded-xl shadow-sm p-6">
+              <SectionHeader title="IT/HR 工单" isAdmin={isAdmin} onAdd={() => setModal({ type: 'ticket' })} />
+              {tickets.length === 0 ? <EmptyState text="暂无工单记录" /> : (
+                <div className="space-y-3">{tickets.map((t: R) => (
+                  <div key={String(t.id)} className="flex items-center justify-between border rounded-lg p-3">
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs px-1.5 py-0.5 rounded bg-gray-100 text-gray-600">{t.type === 'it' ? 'IT' : t.type === 'hr' ? 'HR' : '其他'}</span>
+                        <span className="text-sm font-medium">{String(t.title)}</span>
+                      </div>
+                      {t.description ? <p className="text-xs text-gray-400 mt-0.5 line-clamp-1">{String(t.description)}</p> : null}
+                    </div>
+                    <div className="flex items-center gap-3 shrink-0">
+                      <StatusBadge status={String(t.status)} />
+                      <span className="text-xs text-gray-400">{String(t.created_at).slice(0, 10)}</span>
+                      {isAdmin && <button onClick={() => setModal({ type: 'ticket', data: t })} className="text-xs text-blue-600">编辑</button>}
+                      {isAdmin && <button onClick={() => deleteRecord('tickets', String(t.id))} className="text-xs text-red-500">删除</button>}
+                    </div>
                   </div>
-                  <div className="flex items-center gap-3 shrink-0">
-                    <StatusBadge status={String(t.status)} />
-                    <span className="text-xs text-gray-400">{String(t.created_at).slice(0, 10)}</span>
-                    {isAdmin && <button onClick={() => setModal({ type: 'ticket', data: t })} className="text-xs text-blue-600">编辑</button>}
-                    {isAdmin && <button onClick={() => deleteRecord('tickets', String(t.id))} className="text-xs text-red-500">删除</button>}
-                  </div>
-                </div>
-              ))}</div>
-            )}
+                ))}</div>
+              )}
+            </div>
           </div>
         )}
 
