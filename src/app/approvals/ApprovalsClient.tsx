@@ -4,17 +4,9 @@ import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 
-type R = Record<string, any>;
+import { TYPE_LABELS, TYPE_ICONS, STATUS_STYLES, LEAVE_TYPES } from '@/lib/approval-constants';
 
-const TYPE_LABELS: R = { leave: '请假', expense: '报销', overtime: '加班', attendance_fix: '补卡', transfer: '调岗', salary_adjust: '调薪', resignation: '离职', onboard: '入职确认' };
-const TYPE_ICONS: R = { leave: '🏖️', expense: '🧾', overtime: '⏰', attendance_fix: '📋', transfer: '🔄', salary_adjust: '💰', resignation: '👋', onboard: '🎉' };
-const STATUS_STYLES: R = {
-  pending: { label: '审批中', cls: 'bg-yellow-100 text-yellow-700' },
-  approved: { label: '已通过', cls: 'bg-green-100 text-green-700' },
-  rejected: { label: '已驳回', cls: 'bg-red-100 text-red-700' },
-  cancelled: { label: '已撤销', cls: 'bg-gray-100 text-gray-500' },
-};
-const LEAVE_TYPES: R = { annual: '年假', sick: '病假', personal: '事假', lieu: '调休', other: '其他' };
+type R = Record<string, any>;
 
 const TABS = [
   { key: 'pending', label: '待我审批', icon: '📥' },

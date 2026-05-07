@@ -1,20 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@/lib/supabase-server';
 import { supabaseAdmin as globalAdmin } from '@/lib/supabase';
-import { requireAdmin } from '@/lib/auth-permissions';
+import { requireAdminUser, parseBody } from '@/lib/api-helpers';
 
 // POST — Create new employee (uses service role to create auth user)
 export async function POST(req: NextRequest) {
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return NextResponse.json({ error: '未登录' }, { status: 401 });
-  try {
-    await requireAdmin(supabase, user.id);
-  } catch (e: any) {
-    return NextResponse.json({ error: e.message || '无权限' }, { status: e.status || 403 });
-  }
+  const auth = await requireAdminUser();
+  if ('error' in auth) return auth.error;
 
-  const { name, email, password, role, department, job_title, phone } = await req.json();
+  const parsed = await parseBody(req);
+  if ('error' in parsed) return parsed.error;
+  const { name, email, password, role, department, job_title, phone } = parsed.data as Record<string, string>;
   if (!email || !password || !name) {
     return NextResponse.json({ error: '姓名、邮箱、密码必填' }, { status: 400 });
   }
@@ -47,16 +42,12 @@ export async function POST(req: NextRequest) {
 
 // PATCH — Toggle employee active status
 export async function PATCH(req: NextRequest) {
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return NextResponse.json({ error: '未登录' }, { status: 401 });
-  try {
-    await requireAdmin(supabase, user.id);
-  } catch (e: any) {
-    return NextResponse.json({ error: e.message || '无权限' }, { status: e.status || 403 });
-  }
+  const auth = await requireAdminUser();
+  if ('error' in auth) return auth.error;
 
-  const { id, is_active } = await req.json();
+  const parsed = await parseBody(req);
+  if ('error' in parsed) return parsed.error;
+  const { id, is_active } = parsed.data as { id: string; is_active: boolean };
 
   const supabaseAdmin = globalAdmin!;
 

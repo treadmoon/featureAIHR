@@ -1,10 +1,7 @@
 import { z } from 'zod';
 import { ToolDefinition, AgentContext, ToolResult } from './types';
 import { supabaseAdmin } from '@/lib/supabase';
-
-function escapeIlike(input: string): string {
-  return input.replace(/[%_]/g, '\\\\$&');
-}
+import { escapeIlike } from './utils';
 
 export const searchEmployeeTool: ToolDefinition = {
   name: 'searchEmployee',

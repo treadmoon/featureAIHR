@@ -9,7 +9,7 @@
 
 import { supabaseAdmin } from '@/lib/supabase';
 import { logDiag } from '@/lib/diagnosis-log';
-import { createOpenAI } from '@ai-sdk/openai';
+import { volcengine } from '@/lib/llm-client';
 import { generateObject } from 'ai';
 import { z } from 'zod';
 
@@ -34,11 +34,6 @@ export async function extractMemory(userId: string, role: string, conversation: 
   if (userMsgs.length === 0 || assistantMsgs.length === 0) return;
 
   try {
-    const volcengine = createOpenAI({
-      apiKey: process.env.VOLCENGINE_API_KEY,
-      baseURL: 'https://ark.cn-beijing.volces.com/api/v3',
-    });
-
     const conversationText = conversation
       .slice(-10) // Last 10 messages
       .map(m => `${m.role === 'user' ? '用户' : 'AI'}: ${m.text}`)

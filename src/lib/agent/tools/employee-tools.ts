@@ -1,9 +1,6 @@
 import { z } from 'zod';
 import { ToolDefinition, AgentContext, ToolResult } from './types';
-
-function escapeIlike(input: string): string {
-  return input.replace(/[%_]/g, '\\\\$&');
-}
+import { escapeIlike } from './utils';
 
 export const getLeaveBalanceTool: ToolDefinition = {
   name: 'getLeaveBalance',

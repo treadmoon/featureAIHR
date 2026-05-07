@@ -1,16 +1,10 @@
-import { createClient } from '@/lib/supabase-server';
 import { supabaseAdmin } from '@/lib/supabase';
-import { createOpenAI } from '@ai-sdk/openai';
+import { volcengine } from '@/lib/llm-client';
 import { embed } from 'ai';
-import { NextRequest } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { rateLimit } from '@/lib/rate-limit';
-import { requireAdmin } from '@/lib/auth-permissions';
+import { requireAdminUser, parseBody } from '@/lib/api-helpers';
 import { z } from 'zod';
-
-const volcengine = createOpenAI({
-  apiKey: process.env.VOLCENGINE_API_KEY || '',
-  baseURL: 'https://ark.cn-beijing.volces.com/api/v3',
-});
 
 const MAX_TITLE_LEN = 100;
 const MAX_CONTENT_LEN = 50000;
@@ -128,14 +122,8 @@ async function embedChunksAtomic(docId: string, chunks: string[]) {
 
 // ── GET: 列表（支持分页）──
 export async function GET(req: NextRequest) {
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return new Response('未登录', { status: 401 });
-  try {
-    await requireAdmin(supabase, user.id);
-  } catch (e: any) {
-    return new Response(e.message || '无权限', { status: 403 });
-  }
+  const auth = await requireAdminUser();
+  if ('error' in auth) return auth.error;
 
   const { searchParams } = new URL(req.url);
   const action = searchParams.get('action');
@@ -186,33 +174,23 @@ export async function GET(req: NextRequest) {
 
 // ── POST: 创建/更新/删除/归档 ──
 export async function POST(req: NextRequest) {
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return new Response('未登录', { status: 401 });
-  let adminId: string;
-  try {
-    adminId = await requireAdmin(supabase, user.id);
-  } catch (e: any) {
-    return new Response(e.message || '无权限', { status: 403 });
-  }
+  const auth = await requireAdminUser();
+  if ('error' in auth) return auth.error;
+  const { user } = auth;
 
   const { ok } = rateLimit(`knowledge:${user.id}`, 10, 60000);
   if (!ok) return Response.json({ error: '操作过于频繁，请稍后再试' }, { status: 429 });
 
-  let body: unknown;
-  try {
-    body = await req.json();
-  } catch {
-    return Response.json({ error: '无效 JSON' }, { status: 400 });
-  }
+  const parsed = await parseBody(req);
+  if ('error' in parsed) return parsed.error;
 
   // Zod 校验
-  const parsed = ActionSchema.safeParse(body);
-  if (!parsed.success) {
-    return Response.json({ error: `参数错误: ${parsed.error.message}` }, { status: 400 });
+  const validated = ActionSchema.safeParse(parsed.data);
+  if (!validated.success) {
+    return Response.json({ error: `参数错误: ${validated.error.message}` }, { status: 400 });
   }
 
-  const data = parsed.data;
+  const data = validated.data;
 
   // 创建
   if (data.action === 'create') {
@@ -223,7 +201,7 @@ export async function POST(req: NextRequest) {
       title: data.title,
       content: data.content,
       category_id: data.categoryId || null,
-      updated_by: adminId,
+      updated_by: user.id,
     }).select('id').single();
 
     if (docErr) return Response.json({ error: docErr.message }, { status: 500 });
@@ -231,7 +209,7 @@ export async function POST(req: NextRequest) {
       const chunks = chunkText(data.content);
       const chunkCount = await embedChunksAtomic(doc.id, chunks);
       await supabaseAdmin!.from('knowledge_versions').insert({
-        doc_id: doc.id, version: 1, content: data.content, updated_by: adminId,
+        doc_id: doc.id, version: 1, content: data.content, updated_by: user.id,
       });
       return Response.json({ id: doc.id, chunkCount });
     }
@@ -251,7 +229,7 @@ export async function POST(req: NextRequest) {
       content: data.content,
       category_id: data.categoryId,
       version: newVersion,
-      updated_by: adminId,
+      updated_by: user.id,
     }).eq('id', data.id);
 
     if (updateErr) return Response.json({ error: updateErr.message }, { status: 500 });
@@ -261,7 +239,7 @@ export async function POST(req: NextRequest) {
     await embedChunksAtomic(data.id, chunks);
 
     await supabaseAdmin!.from('knowledge_versions').insert({
-      doc_id: data.id, version: newVersion, content: data.content, updated_by: adminId,
+      doc_id: data.id, version: newVersion, content: data.content, updated_by: user.id,
     });
 
     return Response.json({ ok: true, version: newVersion });

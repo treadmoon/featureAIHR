@@ -1,13 +1,13 @@
 import { createClient } from '@/lib/supabase-server';
 import { supabaseAdmin } from '@/lib/supabase';
-import { NextRequest } from 'next/server';
-import { requireAdmin } from '@/lib/auth-permissions';
+import { NextRequest, NextResponse } from 'next/server';
+import { requireAdminUser } from '@/lib/api-helpers';
 
 // POST: 批量写入埋点事件
 export async function POST(req: NextRequest) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return Response.json({ error: '未登录' }, { status: 401 });
+  if (!user) return NextResponse.json({ error: '未登录' }, { status: 401 });
 
   let body: any;
   try {
@@ -34,14 +34,8 @@ export async function POST(req: NextRequest) {
 
 // GET: 查询统计（管理员）+ AI 分析
 export async function GET(req: NextRequest) {
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return new Response('未登录', { status: 401 });
-  try {
-    await requireAdmin(supabase, user.id);
-  } catch (e: any) {
-    return new Response(e.message || '无权限', { status: e.status || 403 });
-  }
+  const auth = await requireAdminUser();
+  if ('error' in auth) return auth.error;
   if (!supabaseAdmin) return Response.json({});
 
   const { searchParams } = new URL(req.url);
@@ -97,9 +91,8 @@ export async function GET(req: NextRequest) {
 1. 【洞察标题】具体分析
 2. ...`;
 
-    const { createOpenAI } = await import('@ai-sdk/openai');
     const { generateText } = await import('ai');
-    const volcengine = createOpenAI({ apiKey: process.env.VOLCENGINE_API_KEY || '', baseURL: 'https://ark.cn-beijing.volces.com/api/v3' });
+    const { volcengine } = await import('@/lib/llm-client');
 
     try {
       const { text } = await generateText({

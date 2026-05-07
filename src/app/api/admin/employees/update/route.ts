@@ -1,19 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@/lib/supabase-server';
 import { createClient as createAdminClient } from '@supabase/supabase-js';
-import { requireAdmin } from '@/lib/auth-permissions';
+import { requireAdminUser, parseBody } from '@/lib/api-helpers';
 
 export async function PATCH(req: NextRequest) {
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return NextResponse.json({ error: '未登录' }, { status: 401 });
-  try {
-    await requireAdmin(supabase, user.id);
-  } catch (e: any) {
-    return NextResponse.json({ error: e.message || '无权限' }, { status: e.status || 403 });
-  }
+  const auth = await requireAdminUser();
+  if ('error' in auth) return auth.error;
 
-  const { id, ...fields } = await req.json();
+  const parsed = await parseBody(req);
+  if ('error' in parsed) return parsed.error;
+  const { id, ...fields } = parsed.data as { id: string; [key: string]: unknown };
   if (!id) return NextResponse.json({ error: '缺少 id' }, { status: 400 });
 
   // Whitelist allowed fields

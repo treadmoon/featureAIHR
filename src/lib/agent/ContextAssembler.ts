@@ -74,9 +74,8 @@ export async function compressContext(messages: Message[], maxTokens: number = 8
     const modelId = process.env.VOLCENGINE_MODEL_ID;
     if (!apiKey || !modelId) throw new Error('no config');
 
-    const { createOpenAI } = await import('@ai-sdk/openai');
     const { generateText } = await import('ai');
-    const volcengine = createOpenAI({ apiKey, baseURL: 'https://ark.cn-beijing.volces.com/api/v3' });
+    const { volcengine } = await import('@/lib/llm-client');
 
     const oldText = oldMessages
       .map(m => {

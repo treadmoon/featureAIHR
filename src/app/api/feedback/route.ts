@@ -1,12 +1,16 @@
 import { createClient } from '@/lib/supabase-server';
+import { NextResponse } from 'next/server';
 import { logDiag } from '@/lib/diagnosis-log';
+import { parseBody } from '@/lib/api-helpers';
 
 export async function POST(req: Request) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return new Response('未登录', { status: 401 });
+  if (!user) return NextResponse.json({ error: '未登录' }, { status: 401 });
 
-  const { messageId, rating, userMessage, assistantMessage, reason } = await req.json();
+  const parsed = await parseBody(req);
+  if ('error' in parsed) return parsed.error;
+  const { messageId, rating, userMessage, assistantMessage, reason } = parsed.data as Record<string, string>;
 
   await logDiag({
     level: rating === 'bad' ? 'warn' : 'info',

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase-server';
 import { createClient as createAdminClient } from '@supabase/supabase-js';
 import { createApprovalRequest } from '@/lib/approval-chain';
+import { parseBody } from '@/lib/api-helpers';
 
 function sb() {
   return createAdminClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!);
@@ -113,7 +114,9 @@ export async function POST(req: NextRequest) {
   const auth = await getAuth();
   if (!auth) return NextResponse.json({ error: '未登录' }, { status: 401 });
 
-  const { type, payload } = await req.json();
+  const parsed = await parseBody(req);
+  if ('error' in parsed) return parsed.error;
+  const { type, payload } = parsed.data as { type: string; payload?: Record<string, unknown> };
   const validTypes = ['leave', 'expense', 'overtime', 'attendance_fix', 'transfer', 'salary_adjust', 'resignation', 'onboard'];
   if (!validTypes.includes(type)) return NextResponse.json({ error: '无效申请类型' }, { status: 400 });
 
@@ -128,7 +131,9 @@ export async function PATCH(req: NextRequest) {
   const auth = await getAuth();
   if (!auth) return NextResponse.json({ error: '未登录' }, { status: 401 });
 
-  const { request_id, action, comment } = await req.json();
+  const parsed = await parseBody(req);
+  if ('error' in parsed) return parsed.error;
+  const { request_id, action, comment } = parsed.data as { request_id: string; action: string; comment?: string };
   if (!['approve', 'reject', 'cancel'].includes(action)) return NextResponse.json({ error: '无效操作' }, { status: 400 });
 
   const admin = sb();

@@ -1,8 +1,10 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import Link from 'next/link';
 import ReactMarkdown from 'react-markdown';
+
+import { TYPE_LABELS, STATUS_STYLES } from '@/lib/approval-constants';
 
 type R = Record<string, any>;
 
@@ -23,26 +25,35 @@ export default function DashboardClient({ profiles, attendance, approvals, feedb
     setInsightsLoading(false);
   };
 
-  const active = profiles.filter(p => p.is_active);
-  const deptDist: R = {};
-  active.forEach(p => { const d = p.department || '未分配'; deptDist[d] = (deptDist[d] || 0) + 1; });
+  const { active, deptDist, newHires } = useMemo(() => {
+    const a = profiles.filter(p => p.is_active);
+    const dist: R = {};
+    a.forEach(p => { const d = p.department || '未分配'; dist[d] = (dist[d] || 0) + 1; });
+    const hires = profiles.filter(p => p.hire_date?.startsWith(month)).length;
+    return { active: a, deptDist: dist, newHires: hires };
+  }, [profiles, month]);
 
-  const totalLate = attendance.reduce((s, r) => s + (r.late_count || 0), 0);
-  const totalAbsence = attendance.reduce((s, r) => s + (r.absence_days || 0), 0);
-  const totalEarly = attendance.reduce((s, r) => s + (r.early_leave_count || 0), 0);
-  const avgRate = attendance.length ? (attendance.reduce((s, r) => s + ((r.actual_days || 0) / Math.max(r.work_days || 1, 1)), 0) / attendance.length * 100).toFixed(1) : 'N/A';
+  const { totalLate, totalAbsence, totalEarly, avgRate } = useMemo(() => ({
+    totalLate: attendance.reduce((s, r) => s + (r.late_count || 0), 0),
+    totalAbsence: attendance.reduce((s, r) => s + (r.absence_days || 0), 0),
+    totalEarly: attendance.reduce((s, r) => s + (r.early_leave_count || 0), 0),
+    avgRate: attendance.length ? (attendance.reduce((s, r) => s + ((r.actual_days || 0) / Math.max(r.work_days || 1, 1)), 0) / attendance.length * 100).toFixed(1) : 'N/A',
+  }), [attendance]);
 
-  const approvalByType: R = {};
-  approvals.forEach(a => { approvalByType[a.type] = (approvalByType[a.type] || 0) + 1; });
-  const approvalByStatus: R = {};
-  approvals.forEach(a => { approvalByStatus[a.status] = (approvalByStatus[a.status] || 0) + 1; });
+  const { approvalByType, approvalByStatus } = useMemo(() => {
+    const byType: R = {};
+    const byStatus: R = {};
+    approvals.forEach(a => { byType[a.type] = (byType[a.type] || 0) + 1; byStatus[a.status] = (byStatus[a.status] || 0) + 1; });
+    return { approvalByType: byType, approvalByStatus: byStatus };
+  }, [approvals]);
 
-  const badFeedback = feedback.filter(f => f.context?.rating === 'bad');
-  const reasonCount: R = {};
-  badFeedback.forEach(f => { const r = f.context?.reason || '未知'; reasonCount[r] = (reasonCount[r] || 0) + 1; });
+  const { badFeedback, reasonCount } = useMemo(() => {
+    const bad = feedback.filter(f => f.context?.rating === 'bad');
+    const reasons: R = {};
+    bad.forEach(f => { const r = f.context?.reason || '未知'; reasons[r] = (reasons[r] || 0) + 1; });
+    return { badFeedback: bad, reasonCount: reasons };
+  }, [feedback]);
 
-  const TYPE_LABELS: R = { leave: '请假', expense: '报销', overtime: '加班', attendance_fix: '补卡', transfer: '调岗', salary_adjust: '调薪' };
-  const STATUS_LABELS: R = { pending: '审批中', approved: '已通过', rejected: '已驳回', cancelled: '已撤销' };
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -62,7 +73,7 @@ export default function DashboardClient({ profiles, attendance, approvals, feedb
             <Card label="在职" value={active.length} color="green" />
             <Card label="离职/禁用" value={profiles.length - active.length} color="gray" />
             <Card label="部门数" value={Object.keys(deptDist).length} color="indigo" />
-            <Card label="本月入职" value={profiles.filter(p => p.hire_date?.startsWith(month)).length} color="sky" />
+            <Card label="本月入职" value={newHires} color="sky" />
           </div>
           <div className="mt-3 flex flex-wrap gap-1.5">
             {Object.entries(deptDist).sort((a: any, b: any) => b[1] - a[1]).map(([dept, count]) => (
@@ -93,7 +104,7 @@ export default function DashboardClient({ profiles, attendance, approvals, feedb
             </div>
             <div className="bg-white rounded-xl border p-4">
               <p className="text-xs text-gray-400 mb-2">按状态</p>
-              <div className="space-y-1.5">{Object.entries(approvalByStatus).map(([k, v]) => <Bar key={k} label={STATUS_LABELS[k] || k} value={v as number} total={approvals.length} />)}</div>
+              <div className="space-y-1.5">{Object.entries(approvalByStatus).map(([k, v]) => <Bar key={k} label={STATUS_STYLES[k]?.label || k} value={v as number} total={approvals.length} />)}</div>
             </div>
           </div>
         </section>

@@ -1,10 +1,11 @@
 import { createClient } from '@/lib/supabase-server';
-import { NextRequest } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
+import { parseBody } from '@/lib/api-helpers';
 
 export async function GET() {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return new Response('未登录', { status: 401 });
+  if (!user) return NextResponse.json({ error: '未登录' }, { status: 401 });
 
   const { data } = await supabase
     .from('chat_sessions')
@@ -20,9 +21,11 @@ export async function GET() {
 export async function POST(req: NextRequest) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return new Response('未登录', { status: 401 });
+  if (!user) return NextResponse.json({ error: '未登录' }, { status: 401 });
 
-  const body = await req.json();
+  const parsed = await parseBody(req);
+  if ('error' in parsed) return parsed.error;
+  const body = parsed.data as Record<string, any>;
 
   // 创建新会话
   if (body.action === 'create') {

@@ -1,10 +1,11 @@
 import { createClient } from '@/lib/supabase-server';
+import { NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase';
 
 export async function GET() {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return new Response('未登录', { status: 401 });
+  if (!user) return NextResponse.json({ error: '未登录' }, { status: 401 });
   if (!supabaseAdmin) return Response.json([]);
 
   const { data: profile } = await supabase.from('profiles').select('role, name, department, hire_date').eq('id', user.id).single();

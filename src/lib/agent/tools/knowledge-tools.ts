@@ -2,12 +2,7 @@ import { z } from 'zod';
 import { embed } from 'ai';
 import { ToolDefinition, AgentContext, ToolResult } from './types';
 import { supabaseAdmin } from '@/lib/supabase';
-import { createOpenAI } from '@ai-sdk/openai';
-
-const volcengine = createOpenAI({
-  apiKey: process.env.VOLCENGINE_API_KEY || '',
-  baseURL: 'https://ark.cn-beijing.volces.com/api/v3',
-});
+import { volcengine } from '@/lib/llm-client';
 
 export const searchCompanyPoliciesTool: ToolDefinition = {
   name: 'searchCompanyPolicies',

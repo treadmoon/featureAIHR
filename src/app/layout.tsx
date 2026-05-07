@@ -1,6 +1,5 @@
 import type { Metadata } from "next";
 import "./globals.css";
-import ChatProvider from "./components/ChatProvider";
 
 export const metadata: Metadata = {
   title: "AI 智能秘书 — HR & IT Copilot",
@@ -15,7 +14,7 @@ export default function RootLayout({
   return (
     <html lang="zh-CN" className="h-full antialiased">
       <body className="min-h-full flex flex-col">
-        <ChatProvider>{children}</ChatProvider>
+        {children}
       </body>
     </html>
   );

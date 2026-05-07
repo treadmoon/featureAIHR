@@ -3,16 +3,11 @@
 import { useChat } from '@ai-sdk/react';
 import { DefaultChatTransport } from 'ai';
 import { useEffect, useRef, useState, createContext, useContext, useCallback } from 'react';
+import type { ChatMessage } from '@/lib/types/chat';
+
+export type { ChatMessage };
 
 const STORAGE_KEY = 'chat_messages';
-
-export interface ChatMessage {
-  id: string;
-  role: 'user' | 'assistant' | 'system';
-  content?: string;
-  parts?: any[];
-  [key: string]: any;
-}
 
 interface ChatContextValue {
   messages: ChatMessage[];
