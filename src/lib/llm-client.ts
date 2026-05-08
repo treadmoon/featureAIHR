@@ -1,3 +1,8 @@
+/**
+ * @deprecated Use `@/lib/llm-provider` instead.
+ * This file is kept for backward compatibility only.
+ */
+
 import { createOpenAI } from '@ai-sdk/openai';
 
 export const volcengine = createOpenAI({

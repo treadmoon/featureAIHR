@@ -1,5 +1,5 @@
 import { supabaseAdmin } from '@/lib/supabase';
-import { volcengine } from '@/lib/llm-client';
+import { getEmbeddingModel } from '@/lib/llm-provider';
 import { embed } from 'ai';
 import { NextRequest, NextResponse } from 'next/server';
 import { rateLimit } from '@/lib/rate-limit';
@@ -91,7 +91,7 @@ function chunkText(text: string, maxLen = CHUNK_SIZE, overlap = CHUNK_OVERLAP): 
 
 // ── 批量向量化（事务保证）──
 async function embedChunksAtomic(docId: string, chunks: string[]) {
-  const embedModelId = process.env.VOLCENGINE_EMBEDDING_MODEL_ID;
+  const embedModelId = process.env.LLM_EMBEDDING_MODEL || process.env.VOLCENGINE_EMBEDDING_MODEL_ID;
 
   // 1. 删除旧切片（FK cascade 会清理 chunks）
   await supabaseAdmin!.from('knowledge_chunks').delete().eq('doc_id', docId);
@@ -102,7 +102,7 @@ async function embedChunksAtomic(docId: string, chunks: string[]) {
   // 3. 如果有 embedding 模型，批量生成向量
   if (embedModelId) {
     const embeddings = await Promise.all(
-      chunks.map(c => embed({ model: volcengine.textEmbeddingModel(embedModelId), value: c }))
+      chunks.map(c => embed({ model: getEmbeddingModel(), value: c }))
     );
     embeddings.forEach((em, i) => {
       chunkRows.push({ doc_id: docId, chunk_index: i, content: chunks[i], embedding: em.embedding });

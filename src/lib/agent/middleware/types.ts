@@ -42,6 +42,9 @@ export interface ChatContext {
   // Metadata
   timeStr: string;
   curMonth: string;
+
+  // Provider routing
+  selectedProvider?: 'cloud' | 'edge';
 }
 
 export type NextFn = () => Promise<Response>;

@@ -68,6 +68,47 @@ export async function GET(req: NextRequest) {
     });
   }
 
+  // Provider 路由指标
+  if (action === 'provider-metrics') {
+    const [routeLogs, compressLogs, memoryLogs] = await Promise.all([
+      supabaseAdmin.from('diagnosis_logs').select('message, context, created_at').eq('source', 'provider:route').gte('created_at', since).order('created_at', { ascending: false }).limit(200),
+      supabaseAdmin.from('diagnosis_logs').select('message, created_at').eq('source', 'context:compress').gte('created_at', since).limit(200),
+      supabaseAdmin.from('diagnosis_logs').select('message, created_at').eq('source', 'memory:extract').gte('created_at', since).limit(200),
+    ]);
+
+    const routeData = routeLogs.data || [];
+    const edgeCount = routeData.filter((r: any) => r.message?.includes('→ edge')).length;
+    const cloudCount = routeData.filter((r: any) => r.message?.includes('→ cloud')).length;
+
+    const compressData = compressLogs.data || [];
+    const compressEdge = compressData.filter((r: any) => r.message?.includes('task provider')).length;
+    const compressCloud = compressData.filter((r: any) => r.message?.includes('chat provider')).length;
+
+    const memoryData = memoryLogs.data || [];
+    const memoryFallback = memoryData.filter((r: any) => r.message?.includes('fallback')).length;
+
+    return Response.json({
+      days,
+      rolloutPercent: parseInt(process.env.EDGE_ROLLOUT_PERCENT || '0', 10),
+      taskProvider: process.env.LLM_TASK_PROVIDER || 'volcengine',
+      routing: {
+        total: routeData.length,
+        edge: edgeCount,
+        cloud: cloudCount,
+        edgeRate: routeData.length > 0 ? Math.round(edgeCount / routeData.length * 100) : 0,
+      },
+      compression: {
+        total: compressData.length,
+        edge: compressEdge,
+        cloud: compressCloud,
+      },
+      memory: {
+        total: memoryData.length,
+        fallbacks: memoryFallback,
+      },
+    });
+  }
+
   // AI 分析：把统计数据喂给 LLM 生成洞察
   if (action === 'ai-insights') {
     const summaryRes = await fetch(new URL(`/api/analytics?action=summary&days=${days}`, req.url));
@@ -92,11 +133,11 @@ export async function GET(req: NextRequest) {
 2. ...`;
 
     const { generateText } = await import('ai');
-    const { volcengine } = await import('@/lib/llm-client');
+    const { getTaskModel } = await import('@/lib/llm-provider');
 
     try {
       const { text } = await generateText({
-        model: volcengine.chat(process.env.VOLCENGINE_MODEL_ID || ''),
+        model: getTaskModel(),
         prompt,
       });
       return Response.json({ insights: text, summary });

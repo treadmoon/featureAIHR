@@ -9,7 +9,7 @@
 
 import { supabaseAdmin } from '@/lib/supabase';
 import { logDiag } from '@/lib/diagnosis-log';
-import { volcengine } from '@/lib/llm-client';
+import { getTaskModel, getChatModel } from '@/lib/llm-provider';
 import { generateObject } from 'ai';
 import { z } from 'zod';
 
@@ -22,33 +22,16 @@ interface MemoryFact {
   confidence: number;
 }
 
-/**
- * 从对话中提取记忆 facts（异步，对话结束后调用）
- */
-export async function extractMemory(userId: string, role: string, conversation: { role: string; text: string }[]): Promise<void> {
-  if (!supabaseAdmin || !process.env.VOLCENGINE_API_KEY) return;
+const memorySchema = z.object({
+  facts: z.array(z.object({
+    category: z.enum(['preference', 'context', 'knowledge', 'behavior']),
+    content: z.string().describe('简洁的一句话事实描述'),
+    confidence: z.number().min(0).max(1),
+  })).describe('从对话中提取的用户相关事实，最多5条'),
+});
 
-  // Only process if there's meaningful conversation (at least 1 user + 1 assistant message)
-  const userMsgs = conversation.filter(m => m.role === 'user');
-  const assistantMsgs = conversation.filter(m => m.role === 'assistant');
-  if (userMsgs.length === 0 || assistantMsgs.length === 0) return;
-
-  try {
-    const conversationText = conversation
-      .slice(-10) // Last 10 messages
-      .map(m => `${m.role === 'user' ? '用户' : 'AI'}: ${m.text}`)
-      .join('\n');
-
-    const { object } = await generateObject({
-      model: volcengine.chat(process.env.VOLCENGINE_MODEL_ID || ''),
-      schema: z.object({
-        facts: z.array(z.object({
-          category: z.enum(['preference', 'context', 'knowledge', 'behavior']),
-          content: z.string().describe('简洁的一句话事实描述'),
-          confidence: z.number().min(0).max(1),
-        })).describe('从对话中提取的用户相关事实，最多5条'),
-      }),
-      prompt: `分析以下企业HR助手与用户的对话，提取值得长期记住的用户事实。
+function buildMemoryPrompt(role: string, conversationText: string): string {
+  return `分析以下企业HR助手与用户的对话，提取值得长期记住的用户事实。
 
 规则：
 - preference: 用户偏好（如语言、沟通风格、常用功能）
@@ -63,8 +46,50 @@ export async function extractMemory(userId: string, role: string, conversation: 
 用户角色: ${role}
 
 对话内容:
-${conversationText}`,
-    });
+${conversationText}`;
+}
+
+/**
+ * 从对话中提取记忆 facts（异步，对话结束后调用）
+ */
+export async function extractMemory(userId: string, role: string, conversation: { role: string; text: string }[]): Promise<void> {
+  if (!supabaseAdmin || !(process.env.VOLCENGINE_API_KEY || process.env.CLOUDFLARE_API_TOKEN)) return;
+
+  // Only process if there's meaningful conversation (at least 1 user + 1 assistant message)
+  const userMsgs = conversation.filter(m => m.role === 'user');
+  const assistantMsgs = conversation.filter(m => m.role === 'assistant');
+  if (userMsgs.length === 0 || assistantMsgs.length === 0) return;
+
+  try {
+    const conversationText = conversation
+      .slice(-10) // Last 10 messages
+      .map(m => `${m.role === 'user' ? '用户' : 'AI'}: ${m.text}`)
+      .join('\n');
+
+    // Fallback chain: task provider (edge) → chat provider (cloud)
+    let object: z.infer<typeof memorySchema> | null = null;
+    const prompt = buildMemoryPrompt(role, conversationText);
+
+    for (const getModel of [getTaskModel, getChatModel]) {
+      try {
+        const result = await generateObject({
+          model: getModel(),
+          schema: memorySchema,
+          prompt,
+        });
+        object = result.object;
+        break;
+      } catch (providerErr) {
+        logDiag({
+          level: 'warn',
+          source: 'memory:extract',
+          message: `Provider failed, trying fallback: ${providerErr}`,
+          userId,
+        });
+      }
+    }
+
+    if (!object) return;
 
     if (!object.facts || object.facts.length === 0) return;
 

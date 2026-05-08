@@ -41,6 +41,7 @@ export interface RuntimeRecordData {
     output?: number;
   };
   error?: string;
+  provider?: string;
   context: Record<string, unknown>;
 }
 
@@ -148,6 +149,13 @@ export class RuntimeRecord {
   }
 
   /**
+   * 记录使用的 LLM 提供商
+   */
+  setProvider(provider: string): void {
+    this.data.provider = provider;
+  }
+
+  /**
    * 记录错误
    */
   setError(error: string): void {
@@ -172,6 +180,7 @@ export class RuntimeRecord {
         toolCalls: this.data.toolCalls.length,
         tokenUsage: this.data.tokenUsage,
         error: this.data.error,
+        provider: this.data.provider,
       },
       userId: this.data.userId,
     });

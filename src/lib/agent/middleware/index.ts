@@ -10,3 +10,4 @@ export { contextPrepareMiddleware } from './contextPrepare';
 export { loopDetectionMiddleware } from './loopDetection';
 export { memoryMiddleware } from './memory';
 export { summarizationMiddleware } from './summarization';
+export { providerRouteMiddleware } from './providerRoute';

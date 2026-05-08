@@ -2,7 +2,7 @@ import { z } from 'zod';
 import { embed } from 'ai';
 import { ToolDefinition, AgentContext, ToolResult } from './types';
 import { supabaseAdmin } from '@/lib/supabase';
-import { volcengine } from '@/lib/llm-client';
+import { getEmbeddingModel } from '@/lib/llm-provider';
 
 export const searchCompanyPoliciesTool: ToolDefinition = {
   name: 'searchCompanyPolicies',
@@ -20,7 +20,7 @@ export const searchCompanyPoliciesTool: ToolDefinition = {
       return { error: 'Supabase 未连接' };
     }
 
-    const embedModelId = process.env.VOLCENGINE_EMBEDDING_MODEL_ID;
+    const embedModelId = process.env.LLM_EMBEDDING_MODEL || process.env.VOLCENGINE_EMBEDDING_MODEL_ID;
 
     // 无 embedding 模型时：降级为全文搜索
     if (!embedModelId) {
@@ -65,7 +65,7 @@ export const searchCompanyPoliciesTool: ToolDefinition = {
     // 有 embedding 模型：使用向量搜索
     try {
       const { embedding } = await embed({
-        model: volcengine.textEmbeddingModel(embedModelId),
+        model: getEmbeddingModel(),
         value: query,
       });
 

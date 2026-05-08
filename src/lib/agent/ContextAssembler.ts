@@ -8,6 +8,7 @@
  */
 
 import { AgentContext, DbQueryFn } from './tools/types';
+import { logDiag } from '@/lib/diagnosis-log';
 
 export interface Message {
   role: 'user' | 'assistant' | 'system';
@@ -68,38 +69,45 @@ export async function compressContext(messages: Message[], maxTokens: number = 8
   const oldMessages = otherMessages.slice(0, -recentCount);
   const recentMessages = otherMessages.slice(-recentCount);
 
-  // Try LLM summarization
-  try {
-    const apiKey = process.env.VOLCENGINE_API_KEY;
-    const modelId = process.env.VOLCENGINE_MODEL_ID;
-    if (!apiKey || !modelId) throw new Error('no config');
+  // Build summarization prompt text
+  const oldText = oldMessages
+    .map(m => {
+      const text = m.content || m.parts?.filter(p => p.type === 'text').map(p => p.text || '').join(' ') || '';
+      return `${m.role === 'user' ? '用户' : 'AI'}: ${text}`;
+    })
+    .join('\n')
+    .slice(0, 3000);
 
-    const { generateText } = await import('ai');
-    const { volcengine } = await import('@/lib/llm-client');
+  const summarizePrompt = `请用2-3句话概括以下对话的要点，保留关键信息（如数字、日期、工单号、操作结果）：\n\n${oldText}`;
 
-    const oldText = oldMessages
-      .map(m => {
-        const text = m.content || m.parts?.filter(p => p.type === 'text').map(p => p.text || '').join(' ') || '';
-        return `${m.role === 'user' ? '用户' : 'AI'}: ${text}`;
-      })
-      .join('\n')
-      .slice(0, 3000); // Cap input to avoid token explosion
+  // Try LLM summarization with fallback chain: task provider → chat provider → truncation
+  const { generateText } = await import('ai');
+  const providerNames = ['task', 'chat'];
 
-    const { text: summary } = await generateText({
-      model: volcengine.chat(modelId),
-      prompt: `请用2-3句话概括以下对话的要点，保留关键信息（如数字、日期、工单号、操作结果）：\n\n${oldText}`,
-      maxOutputTokens: 200,
-    });
+  for (let i = 0; i < 2; i++) {
+    try {
+      const { getTaskModel, getChatModel } = await import('@/lib/llm-provider');
+      const model = i === 0 ? getTaskModel() : getChatModel();
+      const { text: summary } = await generateText({
+        model,
+        prompt: summarizePrompt,
+        maxOutputTokens: 200,
+      });
 
-    return [
-      ...systemMessages,
-      { role: 'assistant' as const, content: `[之前的对话摘要] ${summary}` },
-      ...recentMessages,
-    ];
-  } catch {
-    // Fallback: simple truncation
-    return [...systemMessages, ...otherMessages.slice(-8)];
+      logDiag({ level: 'info', source: 'context:compress', message: `Summarized via ${providerNames[i]} provider` });
+
+      return [
+        ...systemMessages,
+        { role: 'assistant' as const, content: `[之前的对话摘要] ${summary}` },
+        ...recentMessages,
+      ];
+    } catch {
+      // Try next provider in chain
+    }
   }
+
+  // Final fallback: simple truncation
+  return [...systemMessages, ...otherMessages.slice(-8)];
 }
 
 /**

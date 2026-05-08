@@ -8,7 +8,7 @@
  */
 
 import { streamText } from 'ai';
-import { volcengine } from '@/lib/llm-client';
+import { getChatModel, getChatProviderName } from '@/lib/llm-provider';
 import { logDiag } from '@/lib/diagnosis-log';
 import { cacheKey, setCache, shouldCache } from '@/lib/llm-cache';
 import { createTools } from '@/lib/agent/tools';
@@ -31,6 +31,7 @@ import {
   loopDetectionMiddleware,
   memoryMiddleware,
   summarizationMiddleware,
+  providerRouteMiddleware,
 } from '@/lib/agent/middleware';
 
 export const maxDuration = 60;
@@ -73,8 +74,12 @@ ${role === 'admin' ? '你是系统管理员，可以搜索/修改任意员工信
 async function streamHandler(ctx: ChatContext): Promise<Response> {
   const { userId, role, userText, agentContext, cleanedMessages } = ctx;
 
+  const providerName = getChatProviderName();
+  ctx.runtimeRecord?.setProvider?.(providerName);
+  ctx.runtimeRecord?.completeStep?.('provider:selected', { provider: providerName, route: ctx.selectedProvider || 'cloud' });
+
   const result = streamText({
-    model: volcengine.chat(process.env.VOLCENGINE_MODEL_ID || 'ep-xxxxxxxx-xxxxxxxx'),
+    model: getChatModel(),
     messages: cleanedMessages!,
     maxOutputTokens: 8192,
     system: buildSystemPrompt(ctx),
@@ -114,6 +119,7 @@ const pipeline = compose(
     preHooksMiddleware,
     summarizationMiddleware,
     tokenBudgetMiddleware,
+    providerRouteMiddleware,
     contextPrepareMiddleware,
     loopDetectionMiddleware,
     memoryMiddleware,
