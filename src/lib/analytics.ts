@@ -44,12 +44,6 @@ export function trackError(error: string, context?: Record<string, unknown>) {
   flush(); // 错误立即上报
 }
 
-export function trackApiSlow(api: string, durationMs: number) {
-  if (durationMs < 3000) return; // 只记录超过 3 秒的
-  queue.push({ event_type: 'api_slow', event_name: api, metadata: { durationMs } });
-  scheduleFlush();
-}
-
 // 全局错误捕获
 if (typeof window !== 'undefined') {
   window.addEventListener('error', (e) => {

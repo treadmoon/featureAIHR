@@ -94,15 +94,11 @@ export function getTaskModel() {
  */
 export function getEmbeddingModel() {
   const providerName = resolveProviderName(process.env.LLM_EMBEDDING_PROVIDER, 'volcengine');
-  const modelId = process.env.LLM_EMBEDDING_MODEL || process.env.VOLCENGINE_EMBEDDING_MODEL_ID || '';
+  const modelId = process.env.LLM_EMBEDDING_MODEL || process.env.VOLCENGINE_EMBEDDING_MODEL_ID;
+  if (!modelId) {
+    throw new Error('No embedding model configured. Set LLM_EMBEDDING_MODEL or VOLCENGINE_EMBEDDING_MODEL_ID.');
+  }
   return getProvider(providerName).textEmbeddingModel(modelId);
-}
-
-/**
- * 获取指定提供商的实例（用于 fallback 场景）
- */
-export function getProviderInstance(name: ProviderName): OpenAIProvider {
-  return getProvider(name);
 }
 
 /**

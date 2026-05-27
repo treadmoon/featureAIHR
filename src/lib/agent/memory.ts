@@ -83,7 +83,7 @@ export async function extractMemory(userId: string, role: string, conversation: 
         logDiag({
           level: 'warn',
           source: 'memory:extract',
-          message: `Provider failed, trying fallback: ${providerErr}`,
+          message: `Provider failed, trying fallback: ${providerErr instanceof Error ? providerErr.message : 'unknown error'}`,
           userId,
         });
       }

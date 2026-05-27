@@ -101,8 +101,12 @@ export async function compressContext(messages: Message[], maxTokens: number = 8
         { role: 'assistant' as const, content: `[之前的对话摘要] ${summary}` },
         ...recentMessages,
       ];
-    } catch {
-      // Try next provider in chain
+    } catch (err) {
+      logDiag({
+        level: 'warn',
+        source: 'context:compress',
+        message: `${providerNames[i]} provider failed: ${err instanceof Error ? err.message : 'unknown error'}`,
+      });
     }
   }
 

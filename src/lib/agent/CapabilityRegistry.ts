@@ -56,4 +56,3 @@ export class CapabilityRegistry {
 // 全局单例
 export const capabilityRegistry = new CapabilityRegistry();
 
-export { capabilityRegistry as registry };

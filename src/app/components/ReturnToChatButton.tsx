@@ -11,7 +11,7 @@ export default function ReturnToChatButton() {
 
   if (!ctx || pathname === '/') return null;
 
-  const isStreaming = ctx.status === 'submitted' || ctx.status === 'streaming';
+  const isStreaming = ctx.isLoading;
 
   return (
     <button

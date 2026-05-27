@@ -53,9 +53,3 @@ export function shouldCache(userText: string): boolean {
   return !NO_CACHE_PATTERNS.some(p => p.test(normalized));
 }
 
-// 统计
-export function cacheStats() {
-  let totalHits = 0;
-  for (const entry of cache.values()) totalHits += entry.hits;
-  return { size: cache.size, totalHits };
-}
