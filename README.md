@@ -60,7 +60,7 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY=你的anon-key
 SUPABASE_SERVICE_ROLE_KEY=你的service-role-key
 ```
 
-> 完整密钥清单见 [DEPLOY_SECRETS.md](./DEPLOY_SECRETS.md)
+> 完整密钥清单见 [DEPLOY_SECRETS.md](./docs/DEPLOY_SECRETS.md)
 
 ### 3. 初始化数据库
 
@@ -226,4 +226,4 @@ Auth → RateLimit → PromptGuard → Role → Cache
 ## 相关文档
 
 - [边缘大模型集成](./docs/edge-llm.md) — 边缘推理配置、降级策略、成本对比
-- [部署密钥清单](./DEPLOY_SECRETS.md) — 所需环境变量与获取方式
+- [部署密钥清单](./docs/DEPLOY_SECRETS.md) — 所需环境变量与获取方式
